@@ -915,8 +915,8 @@ const param = new URLSearchParams(location.search).get('room');
 if(param) $('netStatus').textContent = 'Joining room "'+param+'"…';
 
 async function loadTrystero(){
-  try{ return await import('https://esm.run/trystero'); }
-  catch(e){ return await import('https://esm.sh/trystero'); }
+  try{ return await import('https://esm.run/trystero@0.25.3'); }
+  catch(e){ return await import('https://esm.sh/trystero@0.25.3'); }
 }
 function genCode(){
   const CH='abcdefghjkmnpqrstuvwxyz23456789', b=new Uint8Array(6);
@@ -932,42 +932,44 @@ async function initNet(){
   $('netLink').textContent = location.href;
   $('netStatus').textContent = 'Connecting…';
   try{
-    const {joinRoom} = await loadTrystero();
+    const {joinRoom, selfId} = await loadTrystero();
     const room = joinRoom({appId:'gorillas-bas-browser-v2'}, code);
     net.room = room;
-    const [sendInit,onInit] = room.makeAction('init');
-    const [sendShot,onShot] = room.makeAction('shot');
-    net.sendInit = sendInit; net.sendShot = sendShot;
+    const initAct = room.makeAction('init');
+    const shotAct = room.makeAction('shot');
+    net.sendInit = (d)=>initAct.send(d);
+    net.sendShot = (d)=>shotAct.send(d);
     $('netStatus').textContent = param ? 'Joining room…' : 'Waiting for opponent — share the link above';
-    room.onPeerJoin(id=>{
+    room.onPeerJoin = (id)=>{
       if(net.opponent) return;
       net.opponent = id;
-      const iAmHost = room.selfId ? room.selfId < id : !param;
+      const iAmHost = selfId < id;
       myIndex = iAmHost ? 0 : 1;
       if(iAmHost){
         const seed = (Math.random()*2**31)|0;
-        sendInit({seed, gravity});
+        initAct.send({seed, gravity});
         startGame('net', seed);
       }else{
         $('netStatus').textContent = 'Connected! Syncing…';
       }
-    });
-    onInit(({seed, gravity:g})=>{
+    };
+    initAct.onMessage = ({seed, gravity:g})=>{
       if(typeof g==='number') gravity = g;
       if(mode!=='net') startGame('net', seed);
-    });
-    onShot(({a,v})=>{
+    };
+    shotAct.onMessage = ({a,v})=>{
       if(mode==='net' && phase==='aim' && turn!==myIndex) fire(a, v, true);
-    });
-    room.onPeerLeave(id=>{
+    };
+    room.onPeerLeave = (id)=>{
       if(id!==net.opponent) return;
       net.opponent = null;
       if(phase!=='menu') setMsg('\u26A0 OPPONENT DISCONNECTED.');
       $('netStatus').textContent = 'Opponent left. Share the link to invite someone else.';
       showMenu(true);
-    });
+    };
   }catch(e){
     $('netStatus').textContent = 'Failed to load networking (offline?). Try another mode.';
+    console.error('net init failed:', e);
   }
 }
 $('copyBtn').onclick = ()=>{
