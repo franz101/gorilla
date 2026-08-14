@@ -54,6 +54,11 @@ input[type=number]{
   border-radius:3px; font-family:inherit; font-size:14px; font-weight:bold;
 }
 input[type=range]{width:110px; accent-color:var(--c-acc)}
+#menu .panel input[type=text]{
+  width:120px; background:#000055; color:#FFFF55; border:1px solid #55FFFF;
+  padding:4px 6px; border-radius:3px; font-family:inherit; font-size:14px;
+  letter-spacing:2px; text-transform:lowercase;
+}
 button{
   background:var(--c-acc); border:0; color:#161208; font-family:inherit; font-weight:bold;
   padding:6px 14px; border-radius:3px; cursor:pointer; font-size:14px; letter-spacing:1px;
@@ -164,8 +169,13 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
         <button id="copyBtn" class="ghost">COPY LINK</button>
         <button id="backNet" class="ghost">BACK</button>
       </div>
+      <div class="row">
+        <span>JOIN CODE:</span>
+        <input type="text" id="joinCode" maxlength="8" autocomplete="off" spellcheck="false" placeholder="abc123">
+        <button id="joinBtn" class="ghost">JOIN</button>
+      </div>
       <div class="status" id="netStatus">Waiting to connect&hellip;</div>
-      <div class="hint">Browsers connect directly over WebRTC (Trystero). Gameplay never touches a server. Send the link to a friend.</div>
+      <div class="hint">Browsers connect directly over WebRTC (Trystero). Gameplay never touches a server. Host: share the link. Guest: paste a room code and press JOIN.</div>
     </div>
 
     <!-- HELP panel -->
@@ -853,7 +863,8 @@ const menu = {
   openNet(){
     this.panel = 'net';
     this.showPanel();
-    if(!net.room) initNet();
+    if(param){ $('joinCode').value = param; initNet(param); }
+    else if(!net.room) initNet();
   },
   openHelp(){
     this.panel = 'help';
@@ -923,10 +934,9 @@ function genCode(){
   crypto.getRandomValues(b);
   return [...b].map(x=>CH[x%CH.length]).join('');
 }
-
-async function initNet(){
+async function initNet(code){
   if(net.room) return;
-  const code = param || genCode();
+  code = (code || param || genCode()).toLowerCase();
   if(!param) history.replaceState(null,'','?room='+code);
   $('roomCode').textContent = code;
   $('netLink').textContent = location.href;
@@ -939,7 +949,7 @@ async function initNet(){
     const shotAct = room.makeAction('shot');
     net.sendInit = (d)=>initAct.send(d);
     net.sendShot = (d)=>shotAct.send(d);
-    $('netStatus').textContent = param ? 'Joining room…' : 'Waiting for opponent — share the link above';
+    $('netStatus').textContent = 'Waiting for opponent — share the link above';
     room.onPeerJoin = (id)=>{
       if(net.opponent) return;
       net.opponent = id;
@@ -972,6 +982,26 @@ async function initNet(){
     console.error('net init failed:', e);
   }
 }
+
+// Join a friend's room by typing their 6-char code.
+function joinByCode(){
+  const code = $('joinCode').value.trim().toLowerCase();
+  if(!/^[a-z0-9]{6}$/.test(code)){
+    $('netStatus').textContent = 'Enter a 6-character room code (letters/digits).';
+    return;
+  }
+  if(net.room){
+    net.room.leave();
+    net.room = null; net.opponent = null;
+    net.sendInit = null; net.sendShot = null;
+  }
+  initNet(code);
+}
+$('joinBtn').onclick = joinByCode;
+$('joinCode').addEventListener('keydown', e=>{
+  e.stopPropagation();                     // keep arrow keys from driving the game/menu
+  if(e.key === 'Enter'){ e.preventDefault(); joinByCode(); }
+});
 $('copyBtn').onclick = ()=>{
   if(navigator.clipboard) navigator.clipboard.writeText(location.href);
   $('copyBtn').textContent = 'COPIED!';
