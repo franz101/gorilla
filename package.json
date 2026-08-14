@@ -1,0 +1,13 @@
+{
+  "name": "gorillas-bas",
+  "version": "2.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Modern GORILLAS.BAS clone — single-file multiplayer game",
+  "scripts": {
+    "test:multiplayer": "bun test/multiplayer.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1"
+  }
+}

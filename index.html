@@ -130,6 +130,15 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
 #menu .panel .hint{color:#55FFFF}
 #menu .panel .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
 #menu .panel .status{min-height:1.4em; color:#55FFFF}
+#menu .panel .players{display:flex; flex-direction:column; gap:6px; margin:2px 0}
+#menu .panel .slot{
+  display:flex; justify-content:space-between; align-items:center;
+  background:#000055; border:1px solid #000077; padding:6px 10px; border-radius:3px;
+  font-size:14px; letter-spacing:1px;
+}
+#menu .panel .slot .pname{color:#FFFFFF}
+#menu .panel .slot .pstate{color:#AAAAAA}
+#menu .panel .slot .pstate.ok{color:#33ff66}
 #netLink{font-size:12px; color:#AAAAAA; word-break:break-all}
 </style>
 </head>
@@ -174,8 +183,13 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
         <input type="text" id="joinCode" maxlength="8" autocomplete="off" spellcheck="false" placeholder="abc123">
         <button id="joinBtn" class="ghost">JOIN</button>
       </div>
+      <div class="players">
+        <div class="slot"><span class="pname">YOU</span><span class="pstate ok" id="state0">READY</span></div>
+        <div class="slot"><span class="pname">OPPONENT</span><span class="pstate" id="state1">WAITING&hellip;</span></div>
+      </div>
+      <div class="row"><button id="startBtn" class="ghost" disabled>START GAME</button></div>
       <div class="status" id="netStatus">Waiting to connect&hellip;</div>
-      <div class="hint">Browsers connect directly over WebRTC (Trystero). Gameplay never touches a server. Host: share the link. Guest: paste a room code and press JOIN.</div>
+      <div class="hint">Browsers connect directly over WebRTC (Trystero). Host: share the link, then press START when your opponent joins. Guest: paste a room code and press JOIN.</div>
     </div>
 
     <!-- HELP panel -->
@@ -483,7 +497,7 @@ let wind = 0, turn = 0, roundStarter = 0, scores = [0,0], roundNum = 0;
 let phase = 'menu';                     // menu | aim | flying | boom | over
 let shot = null, shotOwner = 0, spin = 0, boom = null, winner = -1;
 let myIndex = 0, names = ['PLAYER 1','PLAYER 2'];
-let net = {room:null, sendInit:null, sendShot:null, opponent:null};
+let net = {room:null, opponent:null, initAct:null, shotAct:null, ackAct:null, sendInit:null, sendShot:null, sendAck:null, started:false, retryTimer:null};
 let acc = 0, lastTs = 0;
 let danceT = 0;
 
@@ -934,6 +948,15 @@ function genCode(){
   crypto.getRandomValues(b);
   return [...b].map(x=>CH[x%CH.length]).join('');
 }
+function updateWaitingRoom(){
+  const opp = $('state1');
+  opp.textContent = net.opponent ? 'CONNECTED ✓' : 'WAITING…';
+  opp.className = 'pstate' + (net.opponent ? ' ok' : '');
+  const isHost = !!net.opponent && myIndex === 0;
+  $('startBtn').style.display = isHost ? '' : 'none';
+  $('startBtn').disabled = net.started;
+}
+
 async function initNet(code){
   if(net.room) return;
   code = (code || param || genCode()).toLowerCase();
@@ -941,40 +964,48 @@ async function initNet(code){
   $('roomCode').textContent = code;
   $('netLink').textContent = location.href;
   $('netStatus').textContent = 'Connecting…';
+  net.started = false;
+  updateWaitingRoom();
   try{
     const {joinRoom, selfId} = await loadTrystero();
     const room = joinRoom({appId:'gorillas-bas-browser-v2'}, code);
     net.room = room;
-    const initAct = room.makeAction('init');
-    const shotAct = room.makeAction('shot');
-    net.sendInit = (d)=>initAct.send(d);
-    net.sendShot = (d)=>shotAct.send(d);
+    net.initAct = room.makeAction('init');
+    net.shotAct = room.makeAction('shot');
+    net.ackAct = room.makeAction('ack');
+    net.sendInit = (d)=>net.initAct.send(d);
+    net.sendShot = (d)=>net.shotAct.send(d);
+    net.sendAck = ()=>net.ackAct.send({});
     $('netStatus').textContent = 'Waiting for opponent — share the link above';
     room.onPeerJoin = (id)=>{
       if(net.opponent) return;
       net.opponent = id;
-      const iAmHost = selfId < id;
-      myIndex = iAmHost ? 0 : 1;
-      if(iAmHost){
-        const seed = (Math.random()*2**31)|0;
-        initAct.send({seed, gravity});
-        startGame('net', seed);
-      }else{
-        $('netStatus').textContent = 'Connected! Syncing…';
-      }
+      myIndex = selfId < id ? 0 : 1;
+      updateWaitingRoom();
+      $('netStatus').textContent = myIndex===0
+        ? 'Opponent connected! Press START GAME.'
+        : 'Opponent connected! Waiting for them to start…';
     };
-    initAct.onMessage = ({seed, gravity:g})=>{
+    net.initAct.onMessage = ({seed, gravity:g})=>{
       if(typeof g==='number') gravity = g;
+      net.started = true;
       if(mode!=='net') startGame('net', seed);
+      net.sendAck();                              // confirm to host (idempotent)
     };
-    shotAct.onMessage = ({a,v})=>{
+    net.ackAct.onMessage = ()=>{
+      if(net.retryTimer){ clearTimeout(net.retryTimer); net.retryTimer = null; }
+    };
+    net.shotAct.onMessage = ({a,v})=>{
       if(mode==='net' && phase==='aim' && turn!==myIndex) fire(a, v, true);
     };
     room.onPeerLeave = (id)=>{
       if(id!==net.opponent) return;
       net.opponent = null;
-      if(phase!=='menu') setMsg('\u26A0 OPPONENT DISCONNECTED.');
+      net.started = false;
+      if(net.retryTimer){ clearTimeout(net.retryTimer); net.retryTimer = null; }
+      if(phase!=='menu') setMsg('⚠ OPPONENT DISCONNECTED.');
       $('netStatus').textContent = 'Opponent left. Share the link to invite someone else.';
+      updateWaitingRoom();
       showMenu(true);
     };
   }catch(e){
@@ -993,7 +1024,10 @@ function joinByCode(){
   if(net.room){
     net.room.leave();
     net.room = null; net.opponent = null;
-    net.sendInit = null; net.sendShot = null;
+    net.initAct = null; net.shotAct = null; net.ackAct = null;
+    net.sendInit = null; net.sendShot = null; net.sendAck = null;
+    net.started = false;
+    if(net.retryTimer){ clearTimeout(net.retryTimer); net.retryTimer = null; }
   }
   initNet(code);
 }
@@ -1002,6 +1036,21 @@ $('joinCode').addEventListener('keydown', e=>{
   e.stopPropagation();                     // keep arrow keys from driving the game/menu
   if(e.key === 'Enter'){ e.preventDefault(); joinByCode(); }
 });
+$('startBtn').onclick = ()=>{
+  if(!net.opponent || myIndex !== 0 || net.started) return;
+  net.started = true;
+  $('startBtn').disabled = true;
+  const seed = (Math.random()*2**31)|0;
+  startGame('net', seed);
+  // Re-send init until the guest acks — the WebRTC data channel can still be
+  // warming up right after onPeerJoin, so a single send can be dropped.
+  let tries = 0;
+  (function sendInit(){
+    if(!net.opponent) return;
+    net.sendInit({seed, gravity});
+    if(++tries < 25) net.retryTimer = setTimeout(sendInit, 600);
+  })();
+};
 $('copyBtn').onclick = ()=>{
   if(navigator.clipboard) navigator.clipboard.writeText(location.href);
   $('copyBtn').textContent = 'COPIED!';
