@@ -180,7 +180,7 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
       </div>
       <div class="row">
         <span>JOIN CODE:</span>
-        <input type="text" id="joinCode" maxlength="8" autocomplete="off" spellcheck="false" placeholder="abc123">
+        <input type="text" id="joinCode" maxlength="20" autocomplete="off" spellcheck="false" placeholder="koala-42">
         <button id="joinBtn" class="ghost">JOIN</button>
       </div>
       <div class="players">
@@ -189,7 +189,7 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
       </div>
       <div class="row"><button id="startBtn" class="ghost" disabled>START GAME</button></div>
       <div class="status" id="netStatus">Waiting to connect&hellip;</div>
-      <div class="hint">Browsers connect directly over WebRTC (Trystero). Host: share the link, then press START when your opponent joins. Guest: paste a room code and press JOIN.</div>
+      <div class="hint">Browsers connect directly over WebRTC (Trystero). Host: share the link, then press START when your opponent joins. Guest: paste a room code (e.g. koala-42) and press JOIN.</div>
     </div>
 
     <!-- HELP panel -->
@@ -202,8 +202,24 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
       <div class="row"><button id="backHelp" class="ghost">BACK</button></div>
     </div>
 
+    <!-- SETTINGS panel -->
+    <div class="panel" id="settingsPanel">
+      <h2>&gt; SETTINGS</h2>
+      <div class="row"><span>GRAVITY: <code id="gravVal">9.8 m/s&sup2;</code></span></div>
+      <div class="row">
+        <button id="gravDown" class="ghost">GRAVITY &minus;</button>
+        <button id="gravUp" class="ghost">GRAVITY +</button>
+      </div>
+      <div class="row">
+        <button id="soundBtn" class="ghost">SOUND: ON</button>
+        <button id="scanBtn" class="ghost">SCANLINES: OFF</button>
+      </div>
+      <div class="row"><button id="backSettings" class="ghost">BACK</button></div>
+      <div class="hint">Gravity affects the banana's fall. Adjust with the buttons or arrow keys (up/down). Earth = 9.8.</div>
+    </div>
+
     <div class="foot">
-      <kbd>&#8593;</kbd><kbd>&#8595;</kbd> select &nbsp; <kbd>&#8592;</kbd><kbd>&#8594;</kbd> adjust &nbsp; <kbd>ENTER</kbd> choose &nbsp; <kbd>ESC</kbd> back / menu<br>
+      <kbd>&#8593;</kbd><kbd>&#8595;</kbd> select &nbsp; <kbd>ENTER</kbd> choose &nbsp; <kbd>ESC</kbd> back / menu<br>
       IN-GAME: <kbd>&#8592;</kbd><kbd>&#8594;</kbd> angle &nbsp; <kbd>&#8593;</kbd><kbd>&#8595;</kbd> velocity &nbsp; <kbd>ENTER</kbd> fire
     </div>
   </div>
@@ -803,13 +819,11 @@ const menu = {
   items: [],
   build(){
     const items = [
-      {key:'two',      label:'TWO PLAYERS',        desc:'hotseat · one keyboard', act:()=>startGame('hot')},
-      {key:'bot',      label:'PLAY VS COMPUTER',   desc:'the machine plays gorilla 2', act:()=>startGame('bot')},
-      {key:'net',      label:'ONLINE · P2P',       desc:'serverless WebRTC duel', act:()=>this.openNet()},
-      {key:'gravity',  label:()=> 'GRAVITY: '+gravity+' m/s\u00B2',  desc:'\u2190\u2192 adjust (Earth=9.8)', adj:true},
-      {key:'sound',    label:()=> 'SOUND: '+ (A.sfxOn?'ON':'OFF'), desc:'music + effects', toggle:'toggleSound'},
-      {key:'scan',     label:()=> 'SCANLINES: '+ (scanlines?'ON':'OFF'), desc:'CRT TV screen effect', toggle:'toggleScanlines'},
-      {key:'help',     label:'INSTRUCTIONS',       desc:'how to throw a banana', act:()=>this.openHelp()},
+      {key:'two',  label:'TWO PLAYERS',      desc:'hotseat · one keyboard', act:()=>startGame('hot')},
+      {key:'bot',  label:'PLAY VS COMPUTER', desc:'the machine plays gorilla 2', act:()=>startGame('bot')},
+      {key:'net',  label:'ONLINE · P2P',     desc:'serverless WebRTC duel', act:()=>goto('#online')},
+      {key:'set',  label:'SETTINGS',         desc:'gravity · sound · scanlines', act:()=>goto('#settings')},
+      {key:'help', label:'INSTRUCTIONS',     desc:'how to throw a banana', act:()=>goto('#help')},
     ];
     this.items = items;
     this.render();
@@ -849,60 +863,19 @@ const menu = {
     const it = this.items[i];
     if(!it) return;
     A.resume();
-    if(it.toggle){ this[it.toggle](); }
-    else if(it.key!=='gravity' && it.act){ it.act(); }
-  },
-  toggleSound(){
-    A.sfxOn = !A.sfxOn;
-    if(A.sfxOn) A.startMusic(); else A.stopMusic();
-    $('muteBtn').textContent = A.sfxOn ? 'SND ON' : 'SND OFF';
-    this.paint();
-  },
-  toggleScanlines(){
-    scanlines = !scanlines;
-    document.body.classList.toggle('scanlines', scanlines);
-    this.paint();
-  },
-  adjust(dir){
-    const it = this.items[this.idx];
-    if(!it) return;
-    if(it.key==='gravity'){
-      gravity = Math.max(1, Math.min(99, gravity + dir));
-    }else if(it.toggle){
-      this[it.toggle]();
-      return;
-    }
-    this.paint();
-  },
-  openNet(){
-    this.panel = 'net';
-    this.showPanel();
-    if(param){ $('joinCode').value = param; initNet(param); }
-    else if(!net.room) initNet();
-  },
-  openHelp(){
-    this.panel = 'help';
-    this.showPanel();
+    if(it.act) it.act();
   },
   showPanel(){
     $('menuList').style.display = this.panel==='main' ? '' : 'none';
     $('netPanel').style.display = this.panel==='net' ? 'flex' : 'none';
     $('helpPanel').style.display = this.panel==='help' ? 'flex' : 'none';
+    $('settingsPanel').style.display = this.panel==='settings' ? 'flex' : 'none';
     $('menu').style.display = 'flex';
-  },
-  back(){
-    this.panel = 'main';
-    this.showPanel();
+    if(this.panel === 'settings') paintSettings();
   }
 };
 
-function showMenu(full){
-  $('menu').style.display = 'flex';
-  menu.panel = 'main';
-  menu.showPanel();
-  menu.paint();
-}
-function hideMenu(){ $('menu').style.display = 'none'; }
+
 
 // keyboard navigation for the menu
 document.addEventListener('keydown', e=>{
@@ -910,17 +883,18 @@ document.addEventListener('keydown', e=>{
   if(menu.panel !== 'main') return;
   if(e.key==='ArrowUp'){ e.preventDefault(); menu.set(menu.idx-1); }
   else if(e.key==='ArrowDown'){ e.preventDefault(); menu.set(menu.idx+1); }
-  else if(e.key==='ArrowLeft'){ e.preventDefault(); menu.adjust(-1); }
-  else if(e.key==='ArrowRight'){ e.preventDefault(); menu.adjust(1); }
   else if(e.key==='Enter'){ e.preventDefault(); menu.choose(menu.idx); }
 });
-$('backNet').onclick = ()=> menu.back();
-$('backHelp').onclick = ()=> menu.back();
+$('backNet').onclick = ()=> goto('#home');
+$('backHelp').onclick = ()=> goto('#home');
+$('backSettings').onclick = ()=> goto('#home');
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape'){
     if(!mode) return;                          // boot menu is always visible
     const visible = $('menu').style.display !== 'none';
-    if(visible) hideMenu(); else showMenu(true);
+    if(!visible) goto('#home');                // show menu
+    else if(menu.panel === 'main') hideMenu(); // resume game
+    else goto('#home');                        // subpanel -> back to main
   }
 });
 
@@ -934,20 +908,51 @@ function startGame(m, seed){
   names = m==='bot' ? ['YOU','COMPUTER'] : ['PLAYER 1','PLAYER 2'];
   if(m==='net') names = myIndex===0 ? ['YOU','OPPONENT'] : ['OPPONENT','YOU'];
   newMatch(seed);
+  history.replaceState(null,'','#play');
 }
+function goto(hash){
+  if(location.hash === hash) route();
+  else location.hash = hash;      // triggers hashchange -> route
+}
+function route(){
+  const h = location.hash.replace(/^#\/?/, '');
+  const [page, ...rest] = h.split('/');
+  const arg = rest.join('/').trim();
+  if(page === 'play'){ if(mode) hideMenu(); else goto('#home'); return; }
+  $('menu').style.display = 'flex';
+  if(page === 'room' && arg){
+    menu.panel = 'net';
+    menu.showPanel();
+    menu.paint();
+    joinRoom(arg);
+    return;
+  }
+  menu.panel = page==='settings' ? 'settings' : page==='help' ? 'help' : page==='online' ? 'net' : 'main';
+  if(page === 'online' && !net.room) initNet();
+  menu.showPanel();
+  menu.paint();
+}
+window.addEventListener('hashchange', route);
 
-const param = new URLSearchParams(location.search).get('room');
-if(param) $('netStatus').textContent = 'Joining room "'+param+'"…';
+function showMenu(){ goto('#home'); }
+function hideMenu(){ $('menu').style.display = 'none'; }
 
 async function loadTrystero(){
   try{ return await import('https://esm.run/trystero@0.25.3'); }
   catch(e){ return await import('https://esm.sh/trystero@0.25.3'); }
 }
+const ANIMALS = ['koala','panda','tiger','lion','zebra','giraffe','monkey','dolphin','eagle','falcon','fox','wolf','bear','otter','penguin','raccoon','sloth','lemur','gecko','iguana','jaguar','leopard','llama','meerkat','narwhal','ocelot','puffin','quokka','shark','toucan','walrus','yak','alpaca','bison','camel','dingo','emu','ferret','gorilla','hamster','ibex'];
+
 function genCode(){
-  const CH='abcdefghjkmnpqrstuvwxyz23456789', b=new Uint8Array(6);
-  crypto.getRandomValues(b);
-  return [...b].map(x=>CH[x%CH.length]).join('');
+  const rng = mulberry32(Date.now());      // randomness seeded by the current time
+  const animal = ANIMALS[Math.floor(rng()*ANIMALS.length)];
+  const num = 10 + Math.floor(rng()*90);
+  return animal + '-' + num;
 }
+function shareLink(code){
+  return location.origin + location.pathname + '#room/' + code;
+}
+
 function updateWaitingRoom(){
   const opp = $('state1');
   opp.textContent = net.opponent ? 'CONNECTED ✓' : 'WAITING…';
@@ -956,13 +961,12 @@ function updateWaitingRoom(){
   $('startBtn').style.display = isHost ? '' : 'none';
   $('startBtn').disabled = net.started;
 }
-
 async function initNet(code){
   if(net.room) return;
-  code = (code || param || genCode()).toLowerCase();
-  if(!param) history.replaceState(null,'','?room='+code);
+  code = (code || genCode()).toLowerCase();
+  net.code = code;
   $('roomCode').textContent = code;
-  $('netLink').textContent = location.href;
+  $('netLink').textContent = shareLink(code);
   $('netStatus').textContent = 'Connecting…';
   net.started = false;
   updateWaitingRoom();
@@ -1014,12 +1018,12 @@ async function initNet(code){
   }
 }
 
-// Join a friend's room by typing their 6-char code.
-function joinByCode(){
-  const code = $('joinCode').value.trim().toLowerCase();
-  if(!/^[a-z0-9]{6}$/.test(code)){
-    $('netStatus').textContent = 'Enter a 6-character room code (letters/digits).';
-    return;
+// Join a friend's room by code (animal-number), via the field or a #room/ link.
+function joinRoom(code){
+  code = (code || '').trim().toLowerCase();
+  if(!/^[a-z]+-\d{1,3}$/.test(code)){
+    $('netStatus').textContent = 'Enter a room code like "koala-42" (animal-number).';
+    return false;
   }
   if(net.room){
     net.room.leave();
@@ -1029,12 +1033,14 @@ function joinByCode(){
     net.started = false;
     if(net.retryTimer){ clearTimeout(net.retryTimer); net.retryTimer = null; }
   }
+  $('joinCode').value = code;
   initNet(code);
+  return true;
 }
-$('joinBtn').onclick = joinByCode;
+$('joinBtn').onclick = ()=> joinRoom($('joinCode').value);
 $('joinCode').addEventListener('keydown', e=>{
   e.stopPropagation();                     // keep arrow keys from driving the game/menu
-  if(e.key === 'Enter'){ e.preventDefault(); joinByCode(); }
+  if(e.key === 'Enter'){ e.preventDefault(); joinRoom($('joinCode').value); }
 });
 $('startBtn').onclick = ()=>{
   if(!net.opponent || myIndex !== 0 || net.started) return;
@@ -1052,10 +1058,42 @@ $('startBtn').onclick = ()=>{
   })();
 };
 $('copyBtn').onclick = ()=>{
-  if(navigator.clipboard) navigator.clipboard.writeText(location.href);
+  if(navigator.clipboard) navigator.clipboard.writeText(shareLink($('roomCode').textContent.trim()));
   $('copyBtn').textContent = 'COPIED!';
   setTimeout(()=> $('copyBtn').textContent = 'COPY LINK', 1200);
 };
+
+// ---------- settings page ----------
+function setGravity(g){
+  gravity = Math.max(1, Math.min(99, g));
+  paintSettings();
+}
+function paintSettings(){
+  $('gravVal').textContent = gravity + ' m/s\u00B2';
+  $('soundBtn').textContent = 'SOUND: ' + (A.sfxOn ? 'ON' : 'OFF');
+  $('scanBtn').textContent = 'SCANLINES: ' + (scanlines ? 'ON' : 'OFF');
+}
+function toggleSound(){
+  A.sfxOn = !A.sfxOn;
+  if(A.sfxOn) A.startMusic(); else A.stopMusic();
+  $('muteBtn').textContent = A.sfxOn ? 'SND ON' : 'SND OFF';
+  paintSettings();
+}
+function toggleScanlines(){
+  scanlines = !scanlines;
+  document.body.classList.toggle('scanlines', scanlines);
+  paintSettings();
+}
+$('gravDown').onclick = ()=> setGravity(gravity - 1);
+$('gravUp').onclick = ()=> setGravity(gravity + 1);
+$('soundBtn').onclick = toggleSound;
+$('scanBtn').onclick = toggleScanlines;
+document.addEventListener('keydown', e=>{
+  if($('menu').style.display === 'none') return;
+  if(menu.panel !== 'settings') return;
+  if(e.key==='ArrowUp' || e.key==='ArrowRight'){ e.preventDefault(); setGravity(gravity+1); }
+  else if(e.key==='ArrowDown' || e.key==='ArrowLeft'){ e.preventDefault(); setGravity(gravity-1); }
+});
 
 // ============================================================
 //  BOOT
@@ -1065,6 +1103,9 @@ menu.build();
 updateHUD();
 setMsg('WELCOME TO GORILLAS.BAS');
 $('menuBtn').style.display = 'none';   // show only in-game
+const legacyRoom = new URLSearchParams(location.search).get('room');
+if(legacyRoom && !location.hash) location.hash = '#room/' + legacyRoom;
+route();                               // render the initial hash page
 document.addEventListener('pointerdown', ()=> A.resume(), {once:true});
 document.addEventListener('keydown', ()=> A.resume(), {once:true});
 

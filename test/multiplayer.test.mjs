@@ -83,7 +83,7 @@ async function runFlow(hostBrowser, guestBrowser) {
 
   await clickOnline(host);
   const hostCode = await waitFor(host, () => document.getElementById('roomCode').textContent.trim(), 'host room code');
-  if (!/^[a-z0-9]{6}$/.test(hostCode)) throw new Error(`bad host code: "${hostCode}"`);
+  if (!/^[a-z]+-\d{1,3}$/.test(hostCode)) throw new Error(`bad host code: "${hostCode}"`);
 
   await clickOnline(guest);
   await waitFor(guest, () => document.getElementById('roomCode').textContent.trim(), 'guest auto-host code');
@@ -99,7 +99,6 @@ async function runFlow(hostBrowser, guestBrowser) {
   if (hostStart === guestStart) throw new Error(`expected exactly one START button (host=${hostStart}, guest=${guestStart})`);
   const starter = hostStart ? host : guest;   // the host (myIndex 0)
   const waiter = hostStart ? guest : host;
-
   // --- start game --------------------------------------------------------
   await starter.evaluate(() => document.getElementById('startBtn').click());
   await waitFor(starter, () => document.getElementById('msg').textContent.includes('TURN'), 'host enters game');
