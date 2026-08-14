@@ -495,9 +495,7 @@ const A = {
 const $ = id => document.getElementById(id);
 const poss = n => n==='YOU' ? 'YOUR' : n+"'S";
 const cv = $('cv'), ctx = cv.getContext('2d');
-const terrainCv = document.createElement('canvas');
-terrainCv.width = WORLD_W; terrainCv.height = H;
-const tctx = terrainCv.getContext('2d');
+const GROUND_COL = '#000040';
 function resizeCanvas(){
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   cv.width = Math.round(innerWidth * dpr);
@@ -526,7 +524,6 @@ function newMatch(seed){
 function newRound(){
   const t = genTerrain(rng);
   buildings = t.buildings; top = t.top; gorillas = t.gorillas;
-  drawTerrainLayer();
   wind = newWind(rng);
   turn = roundStarter;
   phase = 'aim'; shot = null; boom = null; winner = -1; danceT = 0;
@@ -609,9 +606,6 @@ function finishBoom(){
   }else{
     // destructible buildings: carve the blast out of the skyline
     explode(boom.x, boom.y, top);
-    tctx.save(); tctx.globalCompositeOperation = 'destination-out';
-    tctx.beginPath(); tctx.arc(boom.x, boom.y, EXPL_R, 0, 7); tctx.fill();
-    tctx.restore();
     endTurn();
   }
 }
@@ -638,22 +632,35 @@ function syncTurnUI(){
 // ============================================================
 //  RENDERING
 // ============================================================
-function drawTerrainLayer(){
-  tctx.clearRect(0,0,WORLD_W,H);
-  tctx.fillStyle = '#000040'; tctx.fillRect(0, GROUND, WORLD_W, H-GROUND);
-  tctx.fillStyle = '#000060';
-  for(let x=4;x<WORLD_W;x+=26) tctx.fillRect(x, GROUND+6, 15, 2);
+function drawGround(){
+  ctx.fillStyle = '#000060';
+  for(let x=4;x<WORLD_W;x+=26) ctx.fillRect(x, GROUND+6, 15, 2);
+}
+
+// Crisp vector buildings, clipped to the current skyline (top[]) so explosion
+// craters show through without a fixed-resolution offscreen (which blurred).
+function drawBuildings(){
   for(const b of buildings){
-    tctx.fillStyle = b.color;
-    tctx.fillRect(b.x, b.top, b.w, GROUND-b.top);
-    tctx.strokeStyle = '#000055'; tctx.strokeRect(b.x+.5, b.top+.5, b.w-1, GROUND-b.top-1);
+    const x0 = b.x, x1 = b.x + b.w;
+    const path = new Path2D();
+    path.moveTo(x0, GROUND);
+    path.lineTo(x0, top[x0]);
+    for(let x = x0; x <= x1; x++) path.lineTo(x, top[Math.min(x, WORLD_W-1)]);
+    path.lineTo(x1, GROUND);
+    path.closePath();
+    ctx.save();
+    ctx.clip(path);
+    ctx.fillStyle = b.color;
+    ctx.fillRect(x0, b.top, b.w, GROUND - b.top);
+    ctx.strokeStyle = '#000055'; ctx.strokeRect(x0+.5, b.top+.5, b.w-1, GROUND-b.top-1);
     const gx = (b.w - b.cols*13)/2 + 2;
     for(let r=0;r<b.rows;r++)for(let c=0;c<b.cols;c++){
-      const wx = b.x + gx + c*13, wy = b.top + 8 + r*16;
+      const wx = x0 + gx + c*13, wy = b.top + 8 + r*16;
       if(wy+9 > GROUND-3) continue;
-      tctx.fillStyle = b.wins[r*b.cols+c] ? WIN_ON : WIN_OFF;
-      tctx.fillRect(wx, wy, 7, 9);
+      ctx.fillStyle = b.wins[r*b.cols+c] ? WIN_ON : WIN_OFF;
+      ctx.fillRect(wx, wy, 7, 9);
     }
+    ctx.restore();
   }
 }
 
@@ -714,17 +721,27 @@ function drawGorilla(i, ts){
 }
 
 function draw(ts){
-  // camera: uniform scale (no stretch), frame the gorillas, reveal more map when wide
-  const scale = cv.height / H;
-  const viewW = cv.width / scale;
-  const midX = gorillas ? (gorillas[0].x + gorillas[1].x) / 2 : WORLD_W/2;
-  let camX = midX - viewW/2;
-  const maxCam = Math.max(0, WORLD_W - viewW);
-  camX = Math.max(0, Math.min(maxCam, camX));
-  ctx.setTransform(scale, 0, 0, scale, -camX*scale, 0);
-  ctx.fillStyle = SKY; ctx.fillRect(0,0,WORLD_W,H);
+  // camera: fit BOTH gorillas AND the world height, so they're always in view
+  // on any aspect ratio (portrait phones and wide desktops alike).
+  const PAD = 90;
+  const g0 = gorillas[0], g1 = gorillas[1];
+  const lo = Math.min(g0.x, g1.x) - GOR_W/2 - PAD;
+  const hi = Math.max(g0.x, g1.x) + GOR_W/2 + PAD;
+  const needW = hi - lo;
+  const scale = Math.min(cv.width / needW, cv.height / H);
+  const viewW = cv.width / scale, viewH = cv.height / scale;
+  let camX = (lo + hi)/2 - viewW/2;
+  camX = Math.max(0, Math.min(Math.max(0, WORLD_W - viewW), camX));
+  const camY = (H - viewH) / 2;                 // center vertically; negative when zoomed out
+  ctx.setTransform(scale, 0, 0, scale, -camX*scale, -camY*scale);
+  // base fill: ground/void everywhere, then sky above the ground line
+  ctx.fillStyle = GROUND_COL;
+  ctx.fillRect(camX, camY, viewW, viewH);
+  ctx.fillStyle = SKY;
+  ctx.fillRect(camX, camY, viewW, GROUND - camY);
   drawSun(ts);
-  ctx.drawImage(terrainCv,0,0);
+  drawGround();
+  drawBuildings();
   gorillas.forEach((g,i)=>drawGorilla(i,ts));
   if(phase==='aim'){
     const g = gorillas[turn], b = Math.sin(ts/200)*4;
