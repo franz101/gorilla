@@ -194,7 +194,8 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
 // ============================================================
 
 // --- world / scale ------------------------------------------
-const W = 960, H = 600;
+const H = 600;                        // world height (vertical, fixed)
+const WORLD_W = 2200;                 // world width (map extends beyond the view)
 const GROUND = H - 26;               // bottom line of the skyline
 const VX = 15;                       // 5x speed * 3x horizontal zoom
 const VY = 5 * (200 / 350) * 3;      // 60/7 ≈ 8.571 — vertical velocity scale
@@ -224,9 +225,9 @@ function newWind(rng){
 // --- terrain ------------------------------------------------
 function genTerrain(rng){
   const buildings=[]; let x=6;
-  while(x < W-56){
+  while(x < WORLD_W-56){
     let bw = 44 + Math.floor(rng()*42);
-    if(x+bw > W-6) bw = W-6-x;
+    if(x+bw > WORLD_W-6) bw = WORLD_W-6-x;
     const bh = 90 + Math.floor(rng()*300);
     const color = PALETTE[Math.floor(rng()*PALETTE.length)];
     const cols = Math.max(1, Math.floor((bw-10)/13));
@@ -236,12 +237,19 @@ function genTerrain(rng){
     buildings.push({x, w:bw, top:GROUND-bh, color, cols, rows, wins});
     x += bw + (rng()<0.20 ? 6+Math.floor(rng()*14) : 0);
   }
-  const n = buildings.length;
-  const li = Math.min(n-3, 1+Math.floor(rng()*2));
-  const ri = Math.max(li+2, n-2-Math.floor(rng()*2));
+  // gorillas near the world centre, ~600–760 units apart
+  const mid = WORLD_W/2;
+  const half = 300 + Math.floor(rng()*80);
+  let li = 0, ri = buildings.length-1, d1 = Infinity, d2 = Infinity;
+  buildings.forEach((b,i)=>{
+    const cx = b.x + b.w/2;
+    if(Math.abs(cx-(mid-half)) < d1){ d1 = Math.abs(cx-(mid-half)); li = i; }
+    if(Math.abs(cx-(mid+half)) < d2){ d2 = Math.abs(cx-(mid+half)); ri = i; }
+  });
+  if(li === ri) ri = Math.min(buildings.length-1, li+1);
   const mk = b => ({x:Math.round(b.x+b.w/2), y:b.top-GOR_H, alive:true});
-  const top = new Int16Array(W).fill(GROUND);
-  for(const b of buildings) for(let c=Math.max(0,b.x); c<Math.min(W,b.x+b.w); c++) top[c]=b.top;
+  const top = new Int16Array(WORLD_W).fill(GROUND);
+  for(const b of buildings) for(let c=Math.max(0,b.x); c<Math.min(WORLD_W,b.x+b.w); c++) top[c]=b.top;
   return {buildings, top, gorillas:[mk(buildings[li]), mk(buildings[ri])]};
 }
 
@@ -271,7 +279,7 @@ function stepShot(s, dt){
 // Direct-hit + skyline/off-screen collision. `top[x]` is the current
 // (possibly blasted-away) height of the skyline at each column.
 function collide(x, y, top, gorillas){
-  if(x < -80 || x > W+80) return {type:'out'};
+  if(x < -80 || x > WORLD_W+80) return {type:'out'};
   // gorilla direct hit takes priority (OBJECTCOLOR in original)
   for(let i=0;i<gorillas.length;i++){
     const g = gorillas[i];
@@ -279,14 +287,14 @@ function collide(x, y, top, gorillas){
       return {type:'gorilla', i};
   }
   const c = Math.floor(x);
-  if(c >= 0 && c < W && y >= top[c]) return {type:'building'};
+  if(c >= 0 && c < WORLD_W && y >= top[c]) return {type:'building'};
   return null;
 }
 
 // Carve a semicircular blast out of the skyline (destructible buildings).
 function explode(x, y, top){
   const rr = EXPL_R*EXPL_R;
-  for(let c=Math.max(0,Math.floor(x-EXPL_R)); c<=Math.min(W-1,Math.ceil(x+EXPL_R)); c++){
+  for(let c=Math.max(0,Math.floor(x-EXPL_R)); c<=Math.min(WORLD_W-1,Math.ceil(x+EXPL_R)); c++){
     const dx = c-x, d2 = rr - dx*dx;
     if(d2 < 0) continue;
     const bottom = y + Math.sqrt(d2);
@@ -448,8 +456,15 @@ const $ = id => document.getElementById(id);
 const poss = n => n==='YOU' ? 'YOUR' : n+"'S";
 const cv = $('cv'), ctx = cv.getContext('2d');
 const terrainCv = document.createElement('canvas');
-terrainCv.width = W; terrainCv.height = H;
+terrainCv.width = WORLD_W; terrainCv.height = H;
 const tctx = terrainCv.getContext('2d');
+function resizeCanvas(){
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(innerWidth * dpr);
+  cv.height = Math.round(innerHeight * dpr);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
 let gravity = 9.8;                       // original default (Earth = 9.8 m/s²)
 let scanlines = false;                    // CRT effect, off by default
@@ -584,10 +599,10 @@ function syncTurnUI(){
 //  RENDERING
 // ============================================================
 function drawTerrainLayer(){
-  tctx.clearRect(0,0,W,H);
-  tctx.fillStyle = '#000040'; tctx.fillRect(0, GROUND, W, H-GROUND);
+  tctx.clearRect(0,0,WORLD_W,H);
+  tctx.fillStyle = '#000040'; tctx.fillRect(0, GROUND, WORLD_W, H-GROUND);
   tctx.fillStyle = '#000060';
-  for(let x=4;x<W;x+=26) tctx.fillRect(x, GROUND+6, 15, 2);
+  for(let x=4;x<WORLD_W;x+=26) tctx.fillRect(x, GROUND+6, 15, 2);
   for(const b of buildings){
     tctx.fillStyle = b.color;
     tctx.fillRect(b.x, b.top, b.w, GROUND-b.top);
@@ -603,7 +618,7 @@ function drawTerrainLayer(){
 }
 
 function drawSun(ts){
-  const sx = W/2, sy = 50;
+  const sx = WORLD_W/2, sy = 50;
   ctx.save(); ctx.translate(sx,sy);
   ctx.strokeStyle = '#FFFF55'; ctx.lineWidth = 3;
   for(let i=0;i<12;i++){
@@ -659,7 +674,15 @@ function drawGorilla(i, ts){
 }
 
 function draw(ts){
-  ctx.fillStyle = SKY; ctx.fillRect(0,0,W,H);
+  // camera: uniform scale (no stretch), frame the gorillas, reveal more map when wide
+  const scale = cv.height / H;
+  const viewW = cv.width / scale;
+  const midX = gorillas ? (gorillas[0].x + gorillas[1].x) / 2 : WORLD_W/2;
+  let camX = midX - viewW/2;
+  const maxCam = Math.max(0, WORLD_W - viewW);
+  camX = Math.max(0, Math.min(maxCam, camX));
+  ctx.setTransform(scale, 0, 0, scale, -camX*scale, 0);
+  ctx.fillStyle = SKY; ctx.fillRect(0,0,WORLD_W,H);
   drawSun(ts);
   ctx.drawImage(terrainCv,0,0);
   gorillas.forEach((g,i)=>drawGorilla(i,ts));
