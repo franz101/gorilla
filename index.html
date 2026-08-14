@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GORILLAS.BAS — modern multiplayer clone</title>
+<style>
+:root{
+  --c-bg:#000000; --c-panel:#0a0a0f; --c-line:#1f2937;
+  --c-fg:#c8c8c8; --c-dim:#5a6a7a; --c-acc:#ffb000; --c-green:#33ff66;
+  --c-cyan:#00e5ff; --c-red:#ff5544; --c-mag:#ff66ff;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--c-bg); color:var(--c-fg);
+  font-family:"Courier New","IBM Plex Mono",ui-monospace,monospace;
+  display:flex; flex-direction:column; align-items:stretch;
+  height:100vh; overflow:hidden;
+}
+/* CRT scanlines overlay — off by default, toggled via body.scanlines */
+body.scanlines::after{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:99;
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,.09) 0 1px, transparent 1px 4px);
+  mix-blend-mode:multiply;
+}
+#wrap{display:flex; flex-direction:column; flex:1; min-height:0; width:100%; padding:4px 8px 6px}
+#hud{
+  display:flex; justify-content:space-between; align-items:center; gap:12px;
+  padding:3px 2px; font-size:13px; font-weight:bold; flex:none;
+  border-bottom:1px solid var(--c-line); margin-bottom:4px;
+}
+#hud .active{color:var(--c-acc); text-shadow:0 0 8px var(--c-acc)}
+#hud .p1{color:var(--c-green)} #hud .p2{color:var(--c-cyan)}
+#hud .wind{color:var(--c-fg)}
+#stage{
+  flex:1; min-height:0; display:block; padding:0; overflow:hidden;
+}
+canvas{
+  display:block; width:100%; height:100%; object-fit:contain; background:#000;
+}
+#msg{
+  flex:none; min-height:1.1em; text-align:center; padding:3px 6px;
+  color:var(--c-acc); font-weight:bold; letter-spacing:1px; font-size:13px;
+}
+#controls{
+  flex:none; display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; justify-content:center;
+  background:var(--c-panel); padding:5px 10px; border:1px solid var(--c-line); border-radius:4px;
+  font-size:13px;
+}
+#controls .stat{display:flex; align-items:center; gap:5px; color:var(--c-dim); letter-spacing:1px}
+#controls .hint{display:flex; align-items:center; gap:2px; color:var(--c-dim); font-size:11px}
+#controls kbd{
+  color:var(--c-fg); background:#151b24; border:1px solid #334; border-radius:3px;
+  padding:0 4px; font-family:inherit; font-size:10px;
+}
+input[type=number]{
+  width:52px; background:#0b0b12; color:var(--c-acc); border:1px solid #444; padding:3px 4px;
+  border-radius:3px; font-family:inherit; font-size:14px; font-weight:bold;
+}
+button{
+  background:var(--c-acc); border:0; color:#161208; font-family:inherit; font-weight:bold;
+  padding:6px 14px; border-radius:3px; cursor:pointer; font-size:14px; letter-spacing:1px;
+}
+button:hover{filter:brightness(1.12)}
+button.ghost{background:#1c2430; color:var(--c-fg); border:1px solid #334}
+button:disabled{opacity:.35; cursor:default}
+button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outline-offset:1px}
+
+/* ---------- DOS menu (QBasic blue) ---------- */
+#menu{
+  position:fixed; inset:0; background:#0000AA; z-index:50;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:20px; text-align:center; overflow:auto; color:#FFFFFF;
+}
+#menu .crt-inner{
+  width:min(680px,94vw);
+  background:#0000AA;
+  border:2px solid #55FFFF;
+  box-shadow:0 0 0 2px #000055;
+  padding:14px 18px;
+}
+#menu .bar{
+  display:flex; justify-content:space-between; color:#AAAAAA;
+  font-size:12px; padding:4px 2px; border-bottom:1px solid #55FFFF;
+}
+#menu .bar b{color:#FFFF55}
+#menu pre.title{
+  margin:12px 0 0; font-size:clamp(9px,1.8vw,13px); line-height:1.12;
+  color:#FFFF55; white-space:pre;
+}
+#menu .tagline{color:#55FFFF; font-size:13px; letter-spacing:2px; margin:8px 0 2px}
+#menu .version{color:#AAAAAA; font-size:11px; margin-bottom:16px}
+#menu ul{
+  list-style:none; margin:0 auto 16px; padding:0; text-align:left; width:min(460px,100%);
+}
+#menu li{
+  padding:8px 12px; margin:3px 0; cursor:pointer; font-size:16px; letter-spacing:1px;
+  border:1px solid transparent; display:flex; justify-content:space-between; gap:10px; color:#FFFFFF;
+}
+#menu li .desc{color:#55FFFF; font-size:12px; letter-spacing:0}
+#menu li.sel{background:#FFFF55; color:#0000AA; border-color:#FFFF55}
+#menu li.sel .desc{color:#0000AA}
+#menu li .cur{visibility:hidden; font-weight:bold}
+#menu li.sel .cur{visibility:visible; animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+#menu .foot{
+  color:#AAAAAA; font-size:12px; border-top:1px solid #55FFFF; padding-top:10px;
+  line-height:1.7;
+}
+#menu .foot kbd{
+  color:#FFFF55; background:#000055; border:1px solid #55FFFF; border-radius:3px;
+  padding:1px 6px; font-family:inherit;
+}
+#menu button.ghost{
+  background:#000055; color:#FFFF55; border:1px solid #55FFFF;
+}
+#menu button.ghost:hover{filter:brightness(1.3)}
+/* sub-panels (net / help) */
+#menu .panel{
+  display:none; flex-direction:column; gap:10px; width:min(520px,94vw);
+  text-align:left; margin:0 auto; font-size:14px; line-height:1.5; color:#FFFFFF;
+}
+#menu .panel h2{color:#FFFF55; font-size:18px; margin:4px 0; letter-spacing:2px; border-bottom:1px solid #55FFFF; padding-bottom:6px}
+#menu .panel code{
+  background:#000055; color:#FFFF55; padding:2px 6px; border-radius:3px; word-break:break-all;
+}
+#menu .panel .dim{color:#AAAAAA}
+#menu .panel .hint{color:#55FFFF}
+#menu .panel .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+#menu .panel .status{min-height:1.4em; color:#55FFFF}
+#netLink{font-size:12px; color:#AAAAAA; word-break:break-all}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <span id="p1tag" class="p1"></span>
+    <span class="wind" id="windTag"></span>
+    <span id="p2tag" class="p2"></span>
+  </div>
+  <div id="stage"><canvas id="cv" width="960" height="600"></canvas></div>
+  <div id="msg"></div>
+  <div id="controls">
+    <span class="stat">ANGLE <input type="number" id="angN" min="0" max="180" value="45"></span>
+    <span class="stat">VELOCITY <input type="number" id="velN" min="1" max="200" value="50"></span>
+    <span class="hint"><kbd>&#8592;</kbd><kbd>&#8594;</kbd> angle &nbsp; <kbd>&#8593;</kbd><kbd>&#8595;</kbd> velocity &nbsp; <kbd>ENTER</kbd> fire</span>
+    <button id="fireBtn">FIRE &#9166;</button>
+    <button id="muteBtn" class="ghost" title="toggle music/sfx">SND ON</button>
+    <button id="menuBtn" class="ghost">ESC MENU</button>
+  </div>
+</div>
+
+<div id="menu">
+  <div class="crt-inner">
+    <div class="bar"><span><b>GORILLAS.EXE</b></span><span>QBASIC&nbsp;EDITION&nbsp;2026</span></div>
+    <pre class="title" id="titleArt"></pre>
+    <div class="tagline">&#9733;&nbsp;MODERN&nbsp;MULTIPLAYER&nbsp;CLONE&nbsp;&#9733;</div>
+    <div class="version">v2.2 deluxe &middot; original (c)1990 Microsoft &middot; faithful physics</div>
+
+    <ul id="menuList"></ul>
+
+    <!-- ONLINE panel -->
+    <div class="panel" id="netPanel">
+      <h2>&gt; ONLINE &middot; P2P</h2>
+      <div class="row">ROOM CODE: <code id="roomCode">&hellip;</code></div>
+      <div>INVITE LINK:</div>
+      <div id="netLink">&nbsp;</div>
+      <div class="row">
+        <button id="copyBtn" class="ghost">COPY LINK</button>
+        <button id="backNet" class="ghost">BACK</button>
+      </div>
+      <div class="status" id="netStatus">Waiting to connect&hellip;</div>
+      <div class="hint">Browsers connect directly over WebRTC (Trystero). Gameplay never touches a server. Send the link to a friend.</div>
+    </div>
+
+    <!-- HELP panel -->
+    <div class="panel" id="helpPanel">
+      <h2>&gt; INSTRUCTIONS</h2>
+      <div>Your mission is to hit your opponent with an exploding banana by varying the <b>angle</b> and <b>power</b> of your throw, taking into account <b>wind speed</b>, <b>gravity</b>, and the city skyline.</div>
+      <div>Zero degrees is horizontal toward your opponent, 90&deg; is straight up, 180&deg; is horizontal away. Angle ranges 0&ndash;180, velocity 1&ndash;200.</div>
+      <div>Only a <b>direct hit</b> on the gorilla scores &mdash; explosions on buildings are just for show, exactly like the original. Hit your own gorilla and the point goes to your opponent.</div>
+      <div>Watch the wind arrow at the top: its direction is the drift, its length is the strength.</div>
+      <div class="row"><button id="backHelp" class="ghost">BACK</button></div>
+    </div>
+
+    <div class="foot">
+      <kbd>&#8593;</kbd><kbd>&#8595;</kbd> select &nbsp; <kbd>&#8592;</kbd><kbd>&#8594;</kbd> adjust &nbsp; <kbd>ENTER</kbd> choose &nbsp; <kbd>ESC</kbd> back / menu<br>
+      IN-GAME: <kbd>&#8592;</kbd><kbd>&#8594;</kbd> angle &nbsp; <kbd>&#8593;</kbd><kbd>&#8595;</kbd> velocity &nbsp; <kbd>ENTER</kbd> fire
+    </div>
+  </div>
+</div>
+
+<script type="module">
+'use strict';
+
+// ============================================================
+//  GORILLAS.BAS 2.2 — faithful clone
+//  Physics and win-rules transcribed from the QBasic original.
+// ============================================================
+
+// --- world / scale ------------------------------------------
+const W = 960, H = 600;
+const GROUND = H - 26;               // bottom line of the skyline
+const VX = 15;                       // 5x speed * 3x horizontal zoom
+const VY = 5 * (200 / 350) * 3;      // 60/7 ≈ 8.571 — vertical velocity scale
+const GSCALE = 25 * (200 / 350) * 3; // 300/7 ≈ 42.86 — gravity scale
+const WSCALE = 15;                   // 5x * 3x wind scale
+const GOR_W = 26, GOR_H = 30;
+const EXPL_R = 40;                   // blast radius (destroys buildings)
+// EGA 16-color palette for an authentic DOS look
+const SKY = '#0000AA';               // VGA palette 0,1 — dark blue sky
+const PALETTE = ['#00AAAA','#AA0000','#AAAAAA','#AA00AA','#00AA00','#AA5500'];
+const WIN_ON = '#FFFF55', WIN_OFF = '#555555';
+const GOR_BODY = '#AA5500', GOR_DARK = '#7A3A00';
+
+// --- RNG (deterministic for lockstep netcode) ---------------
+function mulberry32(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+// FNRan(x) = INT(RND*x)+1  -> 1..x
+const fnRan = (rng,x) => Math.floor(rng()*x)+1;
+
+// Original wind: FNRan(10)-5, then 1/3 chance of +=/ -= FNRan(10)
+function newWind(rng){
+  let w = fnRan(rng,10) - 5;                 // -4..5
+  if(fnRan(rng,3) === 1) w += (w > 0 ? fnRan(rng,10) : -fnRan(rng,10));
+  return w;                                  // -14..15
+}
+
+// --- terrain ------------------------------------------------
+function genTerrain(rng){
+  const buildings=[]; let x=6;
+  while(x < W-56){
+    let bw = 44 + Math.floor(rng()*42);
+    if(x+bw > W-6) bw = W-6-x;
+    const bh = 90 + Math.floor(rng()*300);
+    const color = PALETTE[Math.floor(rng()*PALETTE.length)];
+    const cols = Math.max(1, Math.floor((bw-10)/13));
+    const rows = Math.max(1, Math.floor((bh-14)/16));
+    const wins = new Uint8Array(cols*rows);
+    for(let i=0;i<wins.length;i++) wins[i] = rng()<0.42 ? 1 : 0;
+    buildings.push({x, w:bw, top:GROUND-bh, color, cols, rows, wins});
+    x += bw + (rng()<0.20 ? 6+Math.floor(rng()*14) : 0);
+  }
+  const n = buildings.length;
+  const li = Math.min(n-3, 1+Math.floor(rng()*2));
+  const ri = Math.max(li+2, n-2-Math.floor(rng()*2));
+  const mk = b => ({x:Math.round(b.x+b.w/2), y:b.top-GOR_H, alive:true});
+  const top = new Int16Array(W).fill(GROUND);
+  for(const b of buildings) for(let c=Math.max(0,b.x); c<Math.min(W,b.x+b.w); c++) top[c]=b.top;
+  return {buildings, top, gorillas:[mk(buildings[li]), mk(buildings[ri])]};
+}
+
+// --- shot physics (transcribed from PlotShot) ---------------
+const facingOf = i => i===0 ? 1 : -1;
+const launchPos = (g,f) => ({x:g.x + f*(GOR_W/2+3), y:g.y-4});
+
+function makeShot(x, y, angleDeg, vel, facing, wind, gravity){
+  const a = angleDeg*Math.PI/180;
+  // vx = cos*v, vy = sin*v*(200/350); here scaled to canvas px.
+  return {
+    x, y,
+    vx: Math.cos(a)*vel*VX*facing,
+    vy: -Math.sin(a)*vel*VY,     // up is negative in canvas
+    g: gravity*GSCALE,
+    windA: wind*WSCALE,
+  };
+}
+
+function stepShot(s, dt){
+  s.vy += s.g*dt;
+  s.vx += s.windA*dt;
+  s.x  += s.vx*dt;
+  s.y  += s.vy*dt;
+}
+
+// Direct-hit + skyline/off-screen collision. `top[x]` is the current
+// (possibly blasted-away) height of the skyline at each column.
+function collide(x, y, top, gorillas){
+  if(x < -80 || x > W+80) return {type:'out'};
+  // gorilla direct hit takes priority (OBJECTCOLOR in original)
+  for(let i=0;i<gorillas.length;i++){
+    const g = gorillas[i];
+    if(g.alive && Math.abs(x-g.x) <= GOR_W/2 && y >= g.y && y <= g.y+GOR_H)
+      return {type:'gorilla', i};
+  }
+  const c = Math.floor(x);
+  if(c >= 0 && c < W && y >= top[c]) return {type:'building'};
+  return null;
+}
+
+// Carve a semicircular blast out of the skyline (destructible buildings).
+function explode(x, y, top){
+  const rr = EXPL_R*EXPL_R;
+  for(let c=Math.max(0,Math.floor(x-EXPL_R)); c<=Math.min(W-1,Math.ceil(x+EXPL_R)); c++){
+    const dx = c-x, d2 = rr - dx*dx;
+    if(d2 < 0) continue;
+    const bottom = y + Math.sqrt(d2);
+    if(bottom > top[c]) top[c] = Math.min(GROUND, Math.max(top[c], Math.round(bottom)));
+  }
+}
+
+// --- bot solver ---------------------------------------------
+function solveShot(me, opp, top, gorillas, wind, gravity, rand){
+  rand = rand || Math.random;
+  const f = facingOf(me);
+  const lp = launchPos(gorillas[me], f);
+  const tg = gorillas[opp];
+  const tx = tg.x, ty = tg.y + GOR_H/2;
+  let best = null;
+  for(let ang=12; ang<=82; ang+=2){
+    for(let vel=15; vel<=200; vel+=3){
+      const s = makeShot(lp.x, lp.y, ang, vel, f, wind, gravity);
+      let dmin = Infinity;
+      for(let t=0;t<900;t++){
+        stepShot(s, 0.03);
+        const dx=s.x-tx, dy=s.y-ty, d=dx*dx+dy*dy;
+        if(d < dmin) dmin = d;
+        const c = collide(s.x, s.y, top, gorillas);
+        if(c){
+          if(c.type==='gorilla' && c.i===opp) dmin = 0;
+          break;
+        }
+        if(s.y > GROUND+20 && s.vy > 0) break;
+      }
+      if(!best || dmin < best.d) best = {ang, vel, d:dmin};
+    }
+  }
+  best.ang += (rand()*2-1)*1.8;
+  best.vel += (rand()*2-1)*2.5;
+  return best;
+}
+
+// ============================================================
+//  AUDIO — chiptune music + SFX (Web Audio, no external files)
+// ============================================================
+const mtof = m => 440 * Math.pow(2,(m-69)/12);
+
+const A = {
+  ac:null, master:null, musicGain:null, sfxGain:null,
+  musicOn:true, sfxOn:true,
+  step:0, nextT:0, timer:null, bpm:150,
+
+  ensure(){
+    if(this.ac) return true;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return false;
+    this.ac = new AC();
+    this.master = this.ac.createGain();
+    this.master.gain.value = 0.85;
+    this.master.connect(this.ac.destination);
+    this.musicGain = this.ac.createGain();
+    this.musicGain.gain.value = 0.14;
+    this.musicGain.connect(this.master);
+    this.sfxGain = this.ac.createGain();
+    this.sfxGain.gain.value = 0.9;
+    this.sfxGain.connect(this.master);
+    return true;
+  },
+  resume(){ if(this.ac && this.ac.state==='suspended') this.ac.resume(); },
+
+  tone(freq, t0, dur, type, dest, vol, slideTo){
+    const o = this.ac.createOscillator();
+    const g = this.ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20,slideTo), t0+dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0+0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    o.connect(g).connect(dest);
+    o.start(t0); o.stop(t0+dur+0.02);
+  },
+  noise(t0, dur, vol, dest, hp){
+    const len = Math.floor(this.ac.sampleRate*dur);
+    const buf = this.ac.createBuffer(1, len, this.ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = (Math.random()*2-1)*(1-i/len);
+    const s = this.ac.createBufferSource();
+    s.buffer = buf;
+    const f = this.ac.createBiquadFilter();
+    f.type = hp ? 'highpass' : 'lowpass';
+    f.frequency.value = hp ? 2500 : 900;
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    s.connect(f).connect(g).connect(dest);
+    s.start(t0);
+  },
+
+  // 32-step 16th-note loop, A minor. Lead(square) + bass(triangle) + hats(noise).
+  LEAD : [69,0,72,0, 76,0,72,69,  67,0,71,0, 74,0,71,67,
+          65,0,69,0, 72,0,69,65,  64,0,67,0, 71,0,67,64],
+  BASS : [45,45,43,43, 41,41,40,40],
+  startMusic(){
+    if(!this.ensure()) return;
+    this.resume();
+    if(this.timer) return;
+    this.musicOn = true;
+    this.nextT = this.ac.currentTime + 0.06;
+    this.step = 0;
+    const spb = 60/this.bpm/4;              // 16th note
+    this.timer = setInterval(() => this.schedule(spb), 25);
+  },
+  schedule(spb){
+    if(!this.ac) return;
+    while(this.nextT < this.ac.currentTime + 0.12){
+      const s = this.step % 32;
+      const t = this.nextT;
+      const lead = this.LEAD[s];
+      if(lead) this.tone(mtof(lead), t, spb*0.9, 'square', this.musicGain, 0.16);
+      if(s % 8 === 0){
+        const b = this.BASS[(s/8)|0];
+        this.tone(mtof(b), t, spb*7.6, 'triangle', this.musicGain, 0.22);
+      }
+      if(s % 2 === 1) this.noise(t, 0.03, 0.05, this.musicGain, true);
+      this.nextT += spb;
+      this.step++;
+    }
+  },
+  stopMusic(){
+    this.musicOn = false;
+    if(this.timer){ clearInterval(this.timer); this.timer = null; }
+  },
+
+  sfx(kind){
+    if(!this.sfxOn) return;
+    if(!this.ensure()) return;
+    this.resume();
+    const t = this.ac.currentTime, g = this.sfxGain;
+    if(kind === 'throw'){                     // PLAY "MBO0L32A-L64CL16BL64A+"
+      this.tone(220, t, 0.05, 'square', g, 0.2, 165);
+      this.tone(165, t+0.05, 0.05, 'square', g, 0.2, 130);
+      this.tone(233, t+0.10, 0.07, 'square', g, 0.2, 175);
+      this.tone(175, t+0.17, 0.06, 'square', g, 0.18, 130);
+    }else if(kind === 'bounce'){
+      this.tone(440, t, 0.05, 'square', g, 0.16);
+    }else if(kind === 'boom'){                // PLAY "MBO0L32EFGEFDC"
+      this.noise(t, 0.4, 0.28, g, false);
+      this.tone(330, t, 0.08, 'sawtooth', g, 0.18, 90);
+      this.tone(392, t+0.05, 0.06, 'square', g, 0.14, 120);
+    }else if(kind === 'hit'){                 // victory arpeggio
+      [440,554,659,880].forEach((f,i)=>this.tone(f, t+i*0.07, 0.14, 'square', g, 0.18));
+      this.noise(t, 0.5, 0.22, g, false);
+    }else if(kind === 'self'){
+      [392,330,262,196].forEach((f,i)=>this.tone(f, t+i*0.09, 0.16, 'square', g, 0.16));
+    }
+  }
+};
+
+// ============================================================
+//  GAME STATE
+// ============================================================
+const $ = id => document.getElementById(id);
+const poss = n => n==='YOU' ? 'YOUR' : n+"'S";
+const cv = $('cv'), ctx = cv.getContext('2d');
+const terrainCv = document.createElement('canvas');
+terrainCv.width = W; terrainCv.height = H;
+const tctx = terrainCv.getContext('2d');
+
+let gravity = 9.8;                       // original default (Earth = 9.8 m/s²)
+let scanlines = false;                    // CRT effect, off by default
+let mode = null, rng = null, buildings = null, top = null, gorillas = null;
+let wind = 0, turn = 0, roundStarter = 0, scores = [0,0], roundNum = 0;
+let phase = 'menu';                     // menu | aim | flying | boom | over
+let shot = null, shotOwner = 0, spin = 0, boom = null, winner = -1;
+let myIndex = 0, names = ['PLAYER 1','PLAYER 2'];
+let net = {room:null, sendInit:null, sendShot:null, opponent:null};
+let acc = 0, lastTs = 0;
+let danceT = 0;
+
+// ---------- match / round ----------
+function newMatch(seed){
+  rng = mulberry32(seed);
+  scores = [0,0]; roundStarter = 0; roundNum = 0;
+  newRound();
+}
+function newRound(){
+  const t = genTerrain(rng);
+  buildings = t.buildings; top = t.top; gorillas = t.gorillas;
+  drawTerrainLayer();
+  wind = newWind(rng);
+  turn = roundStarter;
+  phase = 'aim'; shot = null; boom = null; winner = -1; danceT = 0;
+  roundNum++;
+  updateHUD(); setMsg(poss(names[turn]) + ' TURN — TAKE AIM!');
+  syncTurnUI();
+}
+
+function endTurn(){
+  wind = newWind(rng);
+  turn ^= 1; phase = 'aim'; shot = null; boom = null;
+  updateHUD(); setMsg(poss(names[turn]) + ' TURN');
+  syncTurnUI();
+}
+
+// Faithful: only a direct hit scores. Self-hit hands the point over.
+function roundOver(deadIndex){
+  phase = 'over'; winner = -1;
+  if(deadIndex === -1){ winner = -1; }      // not used (direct hit always has a victim)
+  else if(deadIndex === shotOwner){         // self-hit -> opponent wins
+    winner = shotOwner^1;
+    setMsg('\u2620 '+names[shotOwner]+' HIT THEMSELF! '+names[winner]+' SCORES!');
+    A.sfx('self');
+  }else{
+    winner = shotOwner;
+    setMsg('\u{1F4A5} '+names[winner]+' SCORES! Next round…');
+    A.sfx('hit');
+  }
+  scores[winner]++;
+  updateHUD();
+  danceT = 0;
+  setTimeout(()=>{ roundStarter ^= 1; newRound(); }, 2600);
+}
+
+function fire(ang, vel, remote){
+  if(phase !== 'aim') return;
+  ang = Math.max(0, Math.min(180, +ang||0));
+  vel = Math.max(1, Math.min(200, +vel||1));
+  const f = facingOf(turn);
+  const lp = launchPos(gorillas[turn], f);
+  shot = makeShot(lp.x, lp.y, ang, vel, f, wind, gravity);
+  shotOwner = turn; spin = 0;
+  phase = 'flying'; A.sfx('throw');
+  if(mode==='net' && !remote && net.sendShot) net.sendShot({a:ang, v:vel});
+  setControlsEnabled(false);
+}
+
+// ---------- fixed-timestep flight ----------
+function tick(){
+  stepShot(shot, 0.02);
+  spin += 0.35;
+  const c = collide(shot.x, shot.y, top, gorillas);
+
+  // banana reaches the bottom (gap/past skyline) -> miss, like the original
+  if(!c && shot.y >= GROUND-4){
+    setMsg('Banana lands short. Miss!'); endTurn(); return;
+  }
+  if(!c) return;
+
+  if(c.type === 'out'){
+    setMsg('Banana flew off screen! Miss!'); endTurn(); return;
+  }
+  if(c.type === 'building'){
+    // destructible skyline hit — blast is carved in finishBoom()
+    boom = {x:shot.x, y:shot.y, t:0, hit:false};
+    phase = 'boom'; A.sfx('boom');
+    return;
+  }
+  if(c.type === 'gorilla'){
+    gorillas[c.i].alive = false;
+    boom = {x:shot.x, y:shot.y, t:0, hit:true};
+    phase = 'boom'; A.sfx('boom');
+  }
+}
+
+function finishBoom(){
+  if(boom.hit){
+    const dead = gorillas.findIndex(g=>!g.alive);
+    roundOver(dead);
+  }else{
+    // destructible buildings: carve the blast out of the skyline
+    explode(boom.x, boom.y, top);
+    tctx.save(); tctx.globalCompositeOperation = 'destination-out';
+    tctx.beginPath(); tctx.arc(boom.x, boom.y, EXPL_R, 0, 7); tctx.fill();
+    tctx.restore();
+    endTurn();
+  }
+}
+
+// ---------- turn UI ----------
+function syncTurnUI(){
+  if(phase !== 'aim'){ setControlsEnabled(false); return; }
+  const human = mode==='hot' || (mode==='bot' && turn===0) || (mode==='net' && turn===myIndex);
+  setControlsEnabled(human);
+  if(mode==='bot' && turn===1){
+    setMsg('COMPUTER IS THINKING…');
+    setTimeout(()=>{
+      if(phase!=='aim' || mode!=='bot') return;
+      const s = solveShot(1, 0, top, gorillas, wind, gravity);
+      setSliders(s.ang, s.vel);
+      setMsg('COMPUTER FIRES: angle '+Math.round(s.ang)+', velocity '+Math.round(s.vel));
+      setTimeout(()=>fire(s.ang, s.vel), 600);
+    }, 700);
+  }else if(mode==='net' && turn!==myIndex){
+    setMsg("OPPONENT'S TURN — WAITING…");
+  }
+}
+
+// ============================================================
+//  RENDERING
+// ============================================================
+function drawTerrainLayer(){
+  tctx.clearRect(0,0,W,H);
+  tctx.fillStyle = '#000000'; tctx.fillRect(0, GROUND, W, H-GROUND);
+  tctx.fillStyle = '#1a1a1a';
+  for(let x=4;x<W;x+=26) tctx.fillRect(x, GROUND+6, 15, 2);
+  for(const b of buildings){
+    tctx.fillStyle = b.color;
+    tctx.fillRect(b.x, b.top, b.w, GROUND-b.top);
+    tctx.strokeStyle = '#000000'; tctx.strokeRect(b.x+.5, b.top+.5, b.w-1, GROUND-b.top-1);
+    const gx = (b.w - b.cols*13)/2 + 2;
+    for(let r=0;r<b.rows;r++)for(let c=0;c<b.cols;c++){
+      const wx = b.x + gx + c*13, wy = b.top + 8 + r*16;
+      if(wy+9 > GROUND-3) continue;
+      tctx.fillStyle = b.wins[r*b.cols+c] ? WIN_ON : WIN_OFF;
+      tctx.fillRect(wx, wy, 7, 9);
+    }
+  }
+}
+
+function drawSun(ts){
+  const sx = W/2, sy = 50;
+  ctx.save(); ctx.translate(sx,sy);
+  ctx.strokeStyle = '#FFFF55'; ctx.lineWidth = 3;
+  for(let i=0;i<12;i++){
+    const a = ts/3000 + i*Math.PI/6;
+    ctx.beginPath(); ctx.moveTo(Math.cos(a)*24, Math.sin(a)*24);
+    ctx.lineTo(Math.cos(a)*32, Math.sin(a)*32); ctx.stroke();
+  }
+  ctx.fillStyle = '#FFFF55'; ctx.beginPath(); ctx.arc(0,0,20,0,7); ctx.fill();
+  ctx.fillStyle = '#7a4a17';
+  ctx.beginPath(); ctx.arc(-6,-4,2.2,0,7); ctx.arc(6,-4,2.2,0,7); ctx.fill();
+  ctx.strokeStyle = '#7a4a17'; ctx.lineWidth = 2;
+  const grin = phase==='flying' && shot && Math.hypot(shot.x-sx, shot.y-sy) < 90;
+  ctx.beginPath(); ctx.arc(0, grin?2:4, grin?11:8, 0.15*Math.PI, 0.85*Math.PI); ctx.stroke();
+  ctx.restore();
+}
+
+function drawBanana(x,y,rot){
+  ctx.save(); ctx.translate(x,y); ctx.rotate(rot);
+  ctx.strokeStyle = '#FFFF55'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(0,-4,7,0.15*Math.PI,0.85*Math.PI); ctx.stroke();
+  ctx.restore();
+}
+
+function drawGorilla(i, ts){
+  const g = gorillas[i], f = facingOf(i);
+  const C = g.alive ? GOR_BODY : '#AAAAAA';
+  const D = g.alive ? GOR_DARK : '#555555';
+  let bounce = 0;
+  if(phase==='over' && winner===i){ danceT += 0.03; bounce = Math.abs(Math.sin(danceT*10))*6; }
+  ctx.save(); ctx.translate(Math.round(g.x), Math.round(g.y - bounce));
+  const up = g.alive && ((phase==='aim'&&turn===i) || (phase==='flying'&&shotOwner===i));
+  ctx.fillStyle = D; ctx.fillRect(-9,24,7,6); ctx.fillRect(2,24,7,6);
+  ctx.fillStyle = C; ctx.fillRect(-11,10,22,15);
+  ctx.fillStyle = D; ctx.fillRect(-11,10,22,2);
+  ctx.fillStyle = C;
+  if(up){ ctx.fillRect(-15,-6,6,16); ctx.fillRect(9,-6,6,16); }
+  else  { ctx.fillRect(-15,11,6,13); ctx.fillRect(9,11,6,13); }
+  ctx.fillStyle = C; ctx.fillRect(-8,-1,16,12);
+  ctx.fillStyle = D; ctx.fillRect(-8,-1,16,4);
+  if(g.alive){
+    ctx.fillStyle = '#fff'; ctx.fillRect(-5,4,3,3); ctx.fillRect(2,4,3,3);
+    ctx.fillStyle = '#000'; ctx.fillRect(-4+f,5,2,2); ctx.fillRect(3+f,5,2,2);
+    ctx.fillStyle = D; ctx.fillRect(-2,8,4,2);
+  }else{
+    ctx.strokeStyle = '#222'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-6,3); ctx.lineTo(-1,8); ctx.moveTo(-1,3); ctx.lineTo(-6,8);
+    ctx.moveTo(1,3); ctx.lineTo(6,8); ctx.moveTo(6,3); ctx.lineTo(1,8);
+    ctx.stroke();
+  }
+  if(phase==='aim' && turn===i && g.alive) drawBanana(f*13, -8, ts/150);
+  ctx.restore();
+}
+
+function draw(ts){
+  ctx.fillStyle = SKY; ctx.fillRect(0,0,W,H);
+  drawSun(ts);
+  ctx.drawImage(terrainCv,0,0);
+  gorillas.forEach((g,i)=>drawGorilla(i,ts));
+  if(phase==='aim'){
+    const g = gorillas[turn], b = Math.sin(ts/200)*4;
+    ctx.fillStyle = '#FFFF55';
+    ctx.beginPath(); ctx.moveTo(g.x-7,g.y-20+b); ctx.lineTo(g.x+7,g.y-20+b); ctx.lineTo(g.x,g.y-11+b); ctx.fill();
+  }
+  if(phase==='flying' && shot) drawBanana(shot.x, shot.y, spin);
+  if(phase==='boom' && boom){
+    const t = Math.min(1, boom.t/420), r = EXPL_R*(0.25+0.75*t);
+    ctx.globalAlpha = 1-t*0.7;
+    ctx.fillStyle = '#ff7b24'; ctx.beginPath(); ctx.arc(boom.x,boom.y,r,0,7); ctx.fill();
+    ctx.fillStyle = '#ffe14d'; ctx.beginPath(); ctx.arc(boom.x,boom.y,r*0.55,0,7); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function frame(ts){
+  requestAnimationFrame(frame);
+  if(!lastTs) lastTs = ts;
+  const d = Math.min(100, ts-lastTs); lastTs = ts;
+  if(phase==='flying' && shot){
+    acc += d;
+    while(acc >= 20){ acc -= 20; tick(); if(phase!=='flying'){ acc=0; break; } }
+  }
+  if(phase==='boom' && boom){
+    boom.t += d;
+    if(boom.t >= 420) finishBoom();
+  }
+  if(phase!=='menu') draw(ts);
+}
+requestAnimationFrame(frame);
+
+// ---------- HUD / controls ----------
+function updateHUD(){
+  $('p1tag').textContent = '\u{1F98D} '+names[0]+'  '+scores[0];
+  $('p2tag').textContent = scores[1]+'  '+names[1]+' \u{1F98D}';
+  $('p1tag').className = 'p1'+(turn===0?' active':'');
+  $('p2tag').className = 'p2'+(turn===1?' active':'');
+  const dir = wind===0 ? '' : (wind>0 ? '\u2192' : '\u2190');
+  $('windTag').textContent = 'WIND '+(wind===0?'CALM':dir+' '+Math.abs(wind));
+}
+function setMsg(t){ $('msg').textContent = t; }
+function setControlsEnabled(on){ ['angN','velN','fireBtn'].forEach(id=>$(id).disabled=!on); }
+function setSliders(a,v){
+  a = Math.round(Math.max(0,Math.min(180,a)));
+  v = Math.round(Math.max(1,Math.min(200,v)));
+  $('angN').value = a;
+  $('velN').value = v;
+}
+function nudgeAngle(d){
+  if(phase!=='aim' || $('fireBtn').disabled) return;
+  setSliders(+$('angN').value + d, +$('velN').value);
+}
+function nudgeVel(d){
+  if(phase!=='aim' || $('fireBtn').disabled) return;
+  setSliders(+$('angN').value, +$('velN').value + d);
+}
+$('fireBtn').onclick = ()=> fire($('angN').value, $('velN').value);
+// In-game: arrow keys aim, Enter fires
+document.addEventListener('keydown', e=>{
+  if($('menu').style.display !== 'none') return;      // menu owns the keyboard
+  if(e.key==='ArrowLeft'){ e.preventDefault(); nudgeAngle(-1); }
+  else if(e.key==='ArrowRight'){ e.preventDefault(); nudgeAngle(1); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); nudgeVel(1); }
+  else if(e.key==='ArrowDown'){ e.preventDefault(); nudgeVel(-1); }
+  else if(e.key==='Enter'){ e.preventDefault(); if(phase==='aim' && !$('fireBtn').disabled) fire($('angN').value, $('velN').value); }
+});
+$('muteBtn').onclick = ()=>{
+  A.sfxOn = !A.sfxOn;
+  if(A.sfxOn){ A.startMusic(); } else { A.stopMusic(); }
+  $('muteBtn').textContent = A.sfxOn ? 'SND ON' : 'SND OFF';
+};
+$('menuBtn').onclick = ()=> showMenu(true);
+
+// ============================================================
+//  DOS-STYLE MENU SYSTEM
+// ============================================================
+const TITLE_ART = [
+  '##### ##### ##### ##### #     #     ##### #####',
+  '#     #   # #   #   #   #     #     #   # #    ',
+  '# ### #   # ####    #   #     #     ##### #####',
+  '#   # #   # #  #    #   #     #     #   #     #',
+  '##### ##### #   # ##### ##### ##### #   # #####',
+].join('\n');
+
+const menu = {
+  idx: 0, panel: 'main',
+  items: [],
+  build(){
+    const items = [
+      {key:'two',      label:'TWO PLAYERS',        desc:'hotseat · one keyboard', act:()=>startGame('hot')},
+      {key:'bot',      label:'PLAY VS COMPUTER',   desc:'the machine plays gorilla 2', act:()=>startGame('bot')},
+      {key:'net',      label:'ONLINE · P2P',       desc:'serverless WebRTC duel', act:()=>this.openNet()},
+      {key:'gravity',  label:()=> 'GRAVITY: '+gravity+' m/s\u00B2',  desc:'\u2190\u2192 adjust (Earth=9.8)', adj:true},
+      {key:'sound',    label:()=> 'SOUND: '+ (A.sfxOn?'ON':'OFF'), desc:'music + effects', toggle:'toggleSound'},
+      {key:'scan',     label:()=> 'SCANLINES: '+ (scanlines?'ON':'OFF'), desc:'CRT TV screen effect', toggle:'toggleScanlines'},
+      {key:'help',     label:'INSTRUCTIONS',       desc:'how to throw a banana', act:()=>this.openHelp()},
+    ];
+    this.items = items;
+    this.render();
+  },
+  render(){
+    const ul = $('menuList');
+    ul.innerHTML = '';
+    this.items.forEach((it,i)=>{
+      const li = document.createElement('li');
+      const cur = document.createElement('span');
+      cur.className = 'cur'; cur.textContent = '\u25B6';
+      const wrap = document.createElement('div');
+      const lab = document.createElement('span');
+      lab.className = 'lab';
+      const d = document.createElement('div');
+      d.className = 'desc'; d.textContent = it.desc||'';
+      wrap.appendChild(lab); wrap.appendChild(d);
+      li.appendChild(cur); li.appendChild(wrap);
+      li.onclick = ()=> this.choose(i);
+      li.onmouseenter = ()=> this.set(i);
+      ul.appendChild(li);
+    });
+    this.paint();
+  },
+  paint(){
+    [...$('menuList').children].forEach((li,i)=>{
+      li.classList.toggle('sel', i===this.idx);
+      const it = this.items[i];
+      li.querySelector('.lab').textContent = (typeof it.label==='function' ? it.label() : it.label);
+    });
+  },
+  set(i){
+    this.idx = (i+this.items.length)%this.items.length;
+    this.paint();
+  },
+  choose(i){
+    const it = this.items[i];
+    if(!it) return;
+    A.resume();
+    if(it.toggle){ this[it.toggle](); }
+    else if(it.key!=='gravity' && it.act){ it.act(); }
+  },
+  toggleSound(){
+    A.sfxOn = !A.sfxOn;
+    if(A.sfxOn) A.startMusic(); else A.stopMusic();
+    $('muteBtn').textContent = A.sfxOn ? 'SND ON' : 'SND OFF';
+    this.paint();
+  },
+  toggleScanlines(){
+    scanlines = !scanlines;
+    document.body.classList.toggle('scanlines', scanlines);
+    this.paint();
+  },
+  adjust(dir){
+    const it = this.items[this.idx];
+    if(!it) return;
+    if(it.key==='gravity'){
+      gravity = Math.max(1, Math.min(99, gravity + dir));
+    }else if(it.toggle){
+      this[it.toggle]();
+      return;
+    }
+    this.paint();
+  },
+  openNet(){
+    this.panel = 'net';
+    this.showPanel();
+    if(!net.room) initNet();
+  },
+  openHelp(){
+    this.panel = 'help';
+    this.showPanel();
+  },
+  showPanel(){
+    $('menuList').style.display = this.panel==='main' ? '' : 'none';
+    $('netPanel').style.display = this.panel==='net' ? 'flex' : 'none';
+    $('helpPanel').style.display = this.panel==='help' ? 'flex' : 'none';
+    $('menu').style.display = 'flex';
+  },
+  back(){
+    this.panel = 'main';
+    this.showPanel();
+  }
+};
+
+function showMenu(full){
+  $('menu').style.display = 'flex';
+  menu.panel = 'main';
+  menu.showPanel();
+  menu.paint();
+}
+function hideMenu(){ $('menu').style.display = 'none'; }
+
+// keyboard navigation for the menu
+document.addEventListener('keydown', e=>{
+  if($('menu').style.display === 'none') return;
+  if(menu.panel !== 'main') return;
+  if(e.key==='ArrowUp'){ e.preventDefault(); menu.set(menu.idx-1); }
+  else if(e.key==='ArrowDown'){ e.preventDefault(); menu.set(menu.idx+1); }
+  else if(e.key==='ArrowLeft'){ e.preventDefault(); menu.adjust(-1); }
+  else if(e.key==='ArrowRight'){ e.preventDefault(); menu.adjust(1); }
+  else if(e.key==='Enter'){ e.preventDefault(); menu.choose(menu.idx); }
+});
+$('backNet').onclick = ()=> menu.back();
+$('backHelp').onclick = ()=> menu.back();
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape'){
+    if(!mode) return;                          // boot menu is always visible
+    const visible = $('menu').style.display !== 'none';
+    if(visible) hideMenu(); else showMenu(true);
+  }
+});
+
+// ============================================================
+//  MODES
+// ============================================================
+function startGame(m, seed){
+  mode = m;
+  hideMenu();
+  $('menuBtn').style.display = '';
+  names = m==='bot' ? ['YOU','COMPUTER'] : ['PLAYER 1','PLAYER 2'];
+  if(m==='net') names = myIndex===0 ? ['YOU','OPPONENT'] : ['OPPONENT','YOU'];
+  newMatch(seed);
+}
+
+const param = new URLSearchParams(location.search).get('room');
+if(param) $('netStatus').textContent = 'Joining room "'+param+'"…';
+
+async function loadTrystero(){
+  try{ return await import('https://esm.run/trystero'); }
+  catch(e){ return await import('https://esm.sh/trystero'); }
+}
+function genCode(){
+  const CH='abcdefghjkmnpqrstuvwxyz23456789', b=new Uint8Array(6);
+  crypto.getRandomValues(b);
+  return [...b].map(x=>CH[x%CH.length]).join('');
+}
+
+async function initNet(){
+  if(net.room) return;
+  const code = param || genCode();
+  if(!param) history.replaceState(null,'','?room='+code);
+  $('roomCode').textContent = code;
+  $('netLink').textContent = location.href;
+  $('netStatus').textContent = 'Connecting…';
+  try{
+    const {joinRoom} = await loadTrystero();
+    const room = joinRoom({appId:'gorillas-bas-browser-v2'}, code);
+    net.room = room;
+    const [sendInit,onInit] = room.makeAction('init');
+    const [sendShot,onShot] = room.makeAction('shot');
+    net.sendInit = sendInit; net.sendShot = sendShot;
+    $('netStatus').textContent = param ? 'Joining room…' : 'Waiting for opponent — share the link above';
+    room.onPeerJoin(id=>{
+      if(net.opponent) return;
+      net.opponent = id;
+      const iAmHost = room.selfId ? room.selfId < id : !param;
+      myIndex = iAmHost ? 0 : 1;
+      if(iAmHost){
+        const seed = (Math.random()*2**31)|0;
+        sendInit({seed, gravity});
+        startGame('net', seed);
+      }else{
+        $('netStatus').textContent = 'Connected! Syncing…';
+      }
+    });
+    onInit(({seed, gravity:g})=>{
+      if(typeof g==='number') gravity = g;
+      if(mode!=='net') startGame('net', seed);
+    });
+    onShot(({a,v})=>{
+      if(mode==='net' && phase==='aim' && turn!==myIndex) fire(a, v, true);
+    });
+    room.onPeerLeave(id=>{
+      if(id!==net.opponent) return;
+      net.opponent = null;
+      if(phase!=='menu') setMsg('\u26A0 OPPONENT DISCONNECTED.');
+      $('netStatus').textContent = 'Opponent left. Share the link to invite someone else.';
+      showMenu(true);
+    });
+  }catch(e){
+    $('netStatus').textContent = 'Failed to load networking (offline?). Try another mode.';
+  }
+}
+$('copyBtn').onclick = ()=>{
+  if(navigator.clipboard) navigator.clipboard.writeText(location.href);
+  $('copyBtn').textContent = 'COPIED!';
+  setTimeout(()=> $('copyBtn').textContent = 'COPY LINK', 1200);
+};
+
+// ============================================================
+//  BOOT
+// ============================================================
+$('titleArt').textContent = TITLE_ART;
+menu.build();
+updateHUD();
+setMsg('WELCOME TO GORILLAS.BAS');
+$('menuBtn').style.display = 'none';   // show only in-game
+document.addEventListener('pointerdown', ()=> A.resume(), {once:true});
+document.addEventListener('keydown', ()=> A.resume(), {once:true});
+
+// start music on first menu interaction (autoplay policy)
+let musicStarted = false;
+function armMusic(){
+  if(musicStarted) return;
+  musicStarted = true;
+  if(A.sfxOn) A.startMusic();
+}
+$('menu').addEventListener('pointerdown', armMusic, {once:true});
+$('menu').addEventListener('keydown', armMusic, {once:true});
+</script>
+</body>
+</html>
