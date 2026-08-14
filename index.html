@@ -13,51 +13,47 @@
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{
-  background:var(--c-bg); color:var(--c-fg);
+  background:#0000AA; color:var(--c-fg);
   font-family:"Courier New","IBM Plex Mono",ui-monospace,monospace;
-  display:flex; flex-direction:column; align-items:stretch;
   height:100vh; overflow:hidden;
 }
-/* CRT scanlines overlay — off by default, toggled via body.scanlines */
-body.scanlines::after{
-  content:""; position:fixed; inset:0; pointer-events:none; z-index:99;
-  background:repeating-linear-gradient(0deg, rgba(0,0,0,.09) 0 1px, transparent 1px 4px);
-  mix-blend-mode:multiply;
+canvas{
+  position:fixed; inset:0; z-index:0; width:100vw; height:100vh;
+  display:block; background:#0000AA;
 }
-#wrap{display:flex; flex-direction:column; flex:1; min-height:0; width:100%; padding:4px 8px 6px}
 #hud{
+  position:fixed; top:0; left:0; right:0; z-index:10;
   display:flex; justify-content:space-between; align-items:center; gap:12px;
-  padding:3px 2px; font-size:13px; font-weight:bold; flex:none;
-  border-bottom:1px solid var(--c-line); margin-bottom:4px;
+  padding:6px 10px; font-size:14px; font-weight:bold;
+  background:linear-gradient(rgba(0,0,120,.55), rgba(0,0,120,.05));
+  text-shadow:0 1px 2px rgba(0,0,0,.8);
 }
 #hud .active{color:var(--c-acc); text-shadow:0 0 8px var(--c-acc)}
 #hud .p1{color:var(--c-green)} #hud .p2{color:var(--c-cyan)}
-#hud .wind{color:var(--c-fg)}
-#stage{
-  flex:1; min-height:0; display:block; padding:0; overflow:hidden;
-}
-canvas{
-  display:block; width:100%; height:100%; object-fit:contain; background:#000;
-}
+#hud .wind{color:#fff}
 #msg{
-  flex:none; min-height:1.1em; text-align:center; padding:3px 6px;
-  color:var(--c-acc); font-weight:bold; letter-spacing:1px; font-size:13px;
+  position:fixed; top:44px; left:0; right:0; z-index:10;
+  text-align:center; padding:4px 6px; color:var(--c-acc);
+  font-weight:bold; letter-spacing:1px; font-size:14px;
+  text-shadow:0 1px 2px rgba(0,0,0,.8); pointer-events:none;
 }
 #controls{
-  flex:none; display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; justify-content:center;
-  background:var(--c-panel); padding:5px 10px; border:1px solid var(--c-line); border-radius:4px;
-  font-size:13px;
+  position:fixed; bottom:0; left:0; right:0; z-index:10;
+  display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; justify-content:center;
+  padding:8px 12px;
+  background:linear-gradient(rgba(0,0,120,.05), rgba(0,0,120,.6));
 }
-#controls .stat{display:flex; align-items:center; gap:5px; color:var(--c-dim); letter-spacing:1px}
-#controls .hint{display:flex; align-items:center; gap:2px; color:var(--c-dim); font-size:11px}
+#controls .stat{display:flex; align-items:center; gap:5px; color:var(--c-fg); letter-spacing:1px; text-shadow:0 1px 2px rgba(0,0,0,.8)}
+#controls .hint{display:flex; align-items:center; gap:2px; color:var(--c-fg); font-size:11px; text-shadow:0 1px 2px rgba(0,0,0,.8)}
 #controls kbd{
-  color:var(--c-fg); background:#151b24; border:1px solid #334; border-radius:3px;
+  color:#fff; background:rgba(0,0,60,.7); border:1px solid #55FFFF; border-radius:3px;
   padding:0 4px; font-family:inherit; font-size:10px;
 }
 input[type=number]{
-  width:52px; background:#0b0b12; color:var(--c-acc); border:1px solid #444; padding:3px 4px;
+  width:52px; background:rgba(0,0,40,.7); color:var(--c-acc); border:1px solid #55FFFF; padding:3px 4px;
   border-radius:3px; font-family:inherit; font-size:14px; font-weight:bold;
 }
+input[type=range]{width:110px; accent-color:var(--c-acc)}
 button{
   background:var(--c-acc); border:0; color:#161208; font-family:inherit; font-weight:bold;
   padding:6px 14px; border-radius:3px; cursor:pointer; font-size:14px; letter-spacing:1px;
@@ -133,22 +129,20 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
 </style>
 </head>
 <body>
-<div id="wrap">
-  <div id="hud">
-    <span id="p1tag" class="p1"></span>
-    <span class="wind" id="windTag"></span>
-    <span id="p2tag" class="p2"></span>
-  </div>
-  <div id="stage"><canvas id="cv" width="960" height="600"></canvas></div>
-  <div id="msg"></div>
-  <div id="controls">
-    <span class="stat">ANGLE <input type="number" id="angN" min="0" max="180" value="45"></span>
-    <span class="stat">VELOCITY <input type="number" id="velN" min="1" max="200" value="50"></span>
-    <span class="hint"><kbd>&#8592;</kbd><kbd>&#8594;</kbd> angle &nbsp; <kbd>&#8593;</kbd><kbd>&#8595;</kbd> velocity &nbsp; <kbd>ENTER</kbd> fire</span>
-    <button id="fireBtn">FIRE &#9166;</button>
-    <button id="muteBtn" class="ghost" title="toggle music/sfx">SND ON</button>
-    <button id="menuBtn" class="ghost">ESC MENU</button>
-  </div>
+<canvas id="cv" width="960" height="600"></canvas>
+<div id="hud">
+  <span id="p1tag" class="p1"></span>
+  <span class="wind" id="windTag"></span>
+  <span id="p2tag" class="p2"></span>
+</div>
+<div id="msg"></div>
+<div id="controls">
+  <span class="stat">ANGLE <input type="range" id="angR" min="0" max="180" value="45"><input type="number" id="angN" min="0" max="180" value="45"></span>
+  <span class="stat">VELOCITY <input type="range" id="velR" min="1" max="200" value="50"><input type="number" id="velN" min="1" max="200" value="50"></span>
+  <span class="hint"><kbd>&#8592;</kbd><kbd>&#8594;</kbd> angle &nbsp; <kbd>&#8593;</kbd><kbd>&#8595;</kbd> velocity &nbsp; <kbd>ENTER</kbd> fire</span>
+  <button id="fireBtn">FIRE &#9166;</button>
+  <button id="muteBtn" class="ghost" title="toggle music/sfx">SND ON</button>
+  <button id="menuBtn" class="ghost">ESC MENU</button>
 </div>
 
 <div id="menu">
@@ -591,13 +585,13 @@ function syncTurnUI(){
 // ============================================================
 function drawTerrainLayer(){
   tctx.clearRect(0,0,W,H);
-  tctx.fillStyle = '#000000'; tctx.fillRect(0, GROUND, W, H-GROUND);
-  tctx.fillStyle = '#1a1a1a';
+  tctx.fillStyle = '#000040'; tctx.fillRect(0, GROUND, W, H-GROUND);
+  tctx.fillStyle = '#000060';
   for(let x=4;x<W;x+=26) tctx.fillRect(x, GROUND+6, 15, 2);
   for(const b of buildings){
     tctx.fillStyle = b.color;
     tctx.fillRect(b.x, b.top, b.w, GROUND-b.top);
-    tctx.strokeStyle = '#000000'; tctx.strokeRect(b.x+.5, b.top+.5, b.w-1, GROUND-b.top-1);
+    tctx.strokeStyle = '#000055'; tctx.strokeRect(b.x+.5, b.top+.5, b.w-1, GROUND-b.top-1);
     const gx = (b.w - b.cols*13)/2 + 2;
     for(let r=0;r<b.rows;r++)for(let c=0;c<b.cols;c++){
       const wx = b.x + gx + c*13, wy = b.top + 8 + r*16;
@@ -710,12 +704,12 @@ function updateHUD(){
   $('windTag').textContent = 'WIND '+(wind===0?'CALM':dir+' '+Math.abs(wind));
 }
 function setMsg(t){ $('msg').textContent = t; }
-function setControlsEnabled(on){ ['angN','velN','fireBtn'].forEach(id=>$(id).disabled=!on); }
+function setControlsEnabled(on){ ['angR','angN','velR','velN','fireBtn'].forEach(id=>$(id).disabled=!on); }
 function setSliders(a,v){
   a = Math.round(Math.max(0,Math.min(180,a)));
   v = Math.round(Math.max(1,Math.min(200,v)));
-  $('angN').value = a;
-  $('velN').value = v;
+  $('angR').value = $('angN').value = a;
+  $('velR').value = $('velN').value = v;
 }
 function nudgeAngle(d){
   if(phase!=='aim' || $('fireBtn').disabled) return;
@@ -725,6 +719,10 @@ function nudgeVel(d){
   if(phase!=='aim' || $('fireBtn').disabled) return;
   setSliders(+$('angN').value, +$('velN').value + d);
 }
+[['angR','angN'],['velR','velN']].forEach(([a,b])=>{
+  $(a).oninput = ()=> $(b).value = $(a).value;
+  $(b).oninput = ()=> $(a).value = $(b).value;
+});
 $('fireBtn').onclick = ()=> fire($('angN').value, $('velN').value);
 // In-game: arrow keys aim, Enter fires
 document.addEventListener('keydown', e=>{
