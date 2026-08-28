@@ -61,21 +61,23 @@ input[type=range]{width:110px; accent-color:var(--c-acc); touch-action:manipulat
 }
 #controls .nudge:active{filter:brightness(1.4); transform:scale(0.97)}
 @media(max-width:640px){
-  #controls{gap:8px 8px; padding:12px 8px 14px; flex-direction:column; align-items:center}
-  #controls .stat{font-size:13px; gap:6px; width:100%; max-width:360px; justify-content:center}
-  #controls .stat .lbl{width:74px}
-  input[type=range]{flex:1; min-width:0; width:auto; height:36px}
-  input[type=range]::-webkit-slider-thumb{width:28px;height:28px}
-  input[type=range]::-moz-range-thumb{width:28px;height:28px}
-  input[type=number]{width:62px;height:40px;font-size:16px;padding:4px 6px; flex-shrink:0}
-  #controls button{padding:10px 18px; font-size:16px; min-height:44px}
-  #controls .nudge{min-width:44px; min-height:44px; font-size:20px; flex-shrink:0}
+  #controls{gap:4px 6px; padding:6px 6px 8px; flex-direction:column; align-items:center}
+  #controls .stat{font-size:12px; gap:4px; width:100%; max-width:350px; justify-content:center; min-height:32px}
+  #controls .stat .lbl{width:64px; font-size:11px; letter-spacing:0.5px}
+  input[type=range]{flex:1; min-width:0; width:auto; height:28px}
+  input[type=range]::-webkit-slider-thumb{width:22px;height:22px}
+  input[type=range]::-moz-range-thumb{width:22px;height:22px}
+  input[type=number]{width:56px;height:32px;font-size:14px;padding:2px 4px; flex-shrink:0}
+  #controls button{padding:6px 12px; font-size:13px; min-height:36px}
+  #controls .nudge{min-width:36px; min-height:36px; font-size:16px; flex-shrink:0}
   #controls .hint{display:none}
   #controls #fireBtn, #controls #muteBtn, #controls #menuBtn{flex:0 0 auto}
 }
 @media(max-width:400px){
-  #controls .stat{max-width:340px}
+  #controls{gap:4px 6px; padding:6px 4px 6px}
+  #controls .stat{max-width:335px; gap:3px}
   input[type=range]{flex:1}
+  input[type=number]{width:52px}
 }
 #menu .panel input[type=text]{
   width:120px; background:#000055; color:#FFFF55; border:1px solid #55FFFF;
@@ -250,8 +252,11 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
         <button id="crossBtn" class="ghost">CROSSHAIR: OFF</button>
         <button id="dropBtn" class="ghost">DROP GORILLA: OFF</button>
       </div>
+      <div class="row">
+        <button id="trackBtn" class="ghost">TRACK: CATCHY</button>
+      </div>
       <div class="row"><button id="backSettings" class="ghost">BACK</button></div>
-      <div class="hint">Gravity affects the banana's fall. Earth = 9.8. Crosshair shows pure angle direction (fixed length). Drop Gorilla: when ON, gorillas fall down with the building like in Worms (still only banana kills).</div>
+      <div class="hint">Gravity affects the banana's fall. Earth = 9.8. Crosshair shows pure angle direction (fixed length). Drop Gorilla: when ON, gorillas fall down with the building like in Worms (still only banana kills). Track: choose music — CATCHY (fast), SLOW (laid-back), LO-FI (chill drums & swing) — less fast as requested.</div>
     </div>
 
     <div class="foot">
@@ -428,7 +433,29 @@ const mtof = m => 440 * Math.pow(2,(m-69)/12);
 const A = {
   ac:null, master:null, musicGain:null, sfxGain:null,
   musicOn:true, sfxOn:true,
-  step:0, nextT:0, timer:null, bpm:168,
+  step:0, nextT:0, timer:null, bpm:168, track:'catchy', swing:0,
+  TRACKS:{
+    catchy:{name:'CATCHY', bpm:168, swing:0, chill:false,
+      LEAD:[69,69,72,72, 76,76,79,77,  67,67,71,71, 74,74,76,74, 65,65,69,69, 72,72,74,72,  64,64,67,67, 71,69,67,64],
+      BASS:[45,48,43,46, 41,44,40,43]},
+    classic:{name:'CLASSIC', bpm:150, swing:0, chill:false,
+      LEAD:[69,0,72,0, 76,0,72,69,  67,0,71,0, 74,0,71,67, 65,0,69,0, 72,0,69,65,  64,0,67,0, 71,0,67,64],
+      BASS:[45,45,43,43, 41,41,40,40]},
+    slow:{name:'SLOW', bpm:100, swing:0.04, chill:false,
+      LEAD:[69,0,0,72, 76,0,76,0,  67,0,0,71, 74,0,74,0,  65,0,0,69, 72,0,72,0,  64,0,0,67, 71,69,67,0],
+      BASS:[33,33,36,36, 31,31,29,29]},
+    lofi:{name:'LO-FI', bpm:86, swing:0.08, chill:true,
+      LEAD:[57,0,60,0, 64,60,57,0,  55,0,59,0, 62,59,55,0,  53,0,57,0, 60,57,53,0,  52,0,55,0, 59,55,52,0],
+      BASS:[33,40,31,38, 29,36,28,33]},
+  },
+  setTrack(name){
+    const t=this.TRACKS[name]; if(!t) return;
+    this.track=name; this.bpm=t.bpm; this.swing=t.swing; this.LEAD=t.LEAD.slice(); this.BASS=t.BASS.slice();
+    this.chill=!!t.chill;
+    try{ localStorage.setItem('gorillas.track', name); }catch(e){}
+    if($('trackBtn')) $('trackBtn').textContent='TRACK: '+t.name;
+    if(this.timer){ clearInterval(this.timer); this.timer=null; if(this.musicOn) this.startMusic(); }
+  },
 
   ensure(){
     if(this.ac) return true;
@@ -487,28 +514,35 @@ const A = {
     this.musicOn = true;
     this.nextT = this.ac.currentTime + 0.06;
     this.step = 0;
-    const spb = 60/this.bpm/4;              // 16th note
-    this.timer = setInterval(() => this.schedule(spb), 25);
+    this.timer = setInterval(() => this.schedule(), 25);
   },
-  schedule(spb){
+  schedule(){
     if(!this.ac) return;
+    const baseSpb = 60/this.bpm/4;
     while(this.nextT < this.ac.currentTime + 0.12){
       const s = this.step % 32;
+      const sw = this.swing ? (s%2 ? 1+this.swing : 1-this.swing) : 1;
+      const spb = baseSpb * sw;
       const t = this.nextT;
       const lead = this.LEAD[s];
-      if(lead) this.tone(mtof(lead), t, spb*0.88, 'square', this.musicGain, 0.18);
+      if(lead) this.tone(mtof(lead), t, spb*(this.chill?0.95:0.88), this.chill?'triangle':'square', this.musicGain, this.chill?0.13:0.18);
       if(s % 8 === 0){
         const b = this.BASS[(s/8)|0];
-        this.tone(mtof(b), t, spb*7.4, 'triangle', this.musicGain, 0.26);
-        // chord stab on downbeat
-        this.tone(mtof(b+12), t, spb*1.8, 'square', this.musicGain, 0.07);
-        this.tone(mtof(b+7), t, spb*1.8, 'square', this.musicGain, 0.07);
+        this.tone(mtof(b), t, spb*7.4, 'triangle', this.musicGain, this.chill?0.16:0.26);
+        if(!this.chill){
+          this.tone(mtof(b+12), t, spb*1.8, 'square', this.musicGain, 0.07);
+          this.tone(mtof(b+7), t, spb*1.8, 'square', this.musicGain, 0.07);
+        }
       }
-      // hats on off-beats, snare on 8 & 24
-      if(s % 2 === 1) this.noise(t, 0.025, 0.055, this.musicGain, true);
-      if(s===8 || s===24) this.noise(t, 0.08, 0.16, this.musicGain, false);
-      // shaker on every 16th for groove
-      if(s%4===2) this.noise(t, 0.015, 0.028, this.musicGain, true);
+      if(this.chill){
+        if(s%16===0) this.tone(55, t, spb*0.9, 'sine', this.musicGain, 0.14);
+        if(s===8 || s===24) this.noise(t, 0.07, 0.09, this.musicGain, false);
+        if(s%4===2) this.noise(t, 0.02, 0.03, this.musicGain, true);
+      }else{
+        if(s % 2 === 1) this.noise(t, 0.025, 0.055, this.musicGain, true);
+        if(s===8 || s===24) this.noise(t, 0.08, 0.16, this.musicGain, false);
+        if(s%4===2) this.noise(t, 0.015, 0.028, this.musicGain, true);
+      }
       this.nextT += spb;
       this.step++;
     }
@@ -1439,6 +1473,7 @@ function paintSettings(){
   $('scanBtn').textContent = 'SCANLINES: ' + (scanlines ? 'ON' : 'OFF');
   $('crossBtn').textContent = 'CROSSHAIR: ' + (crosshair ? 'ON' : 'OFF');
   $('dropBtn').textContent = 'DROP GORILLA: ' + (dropGorilla ? 'ON' : 'OFF');
+  const tb=$('trackBtn'); if(tb) tb.textContent='TRACK: '+(A.TRACKS[A.track]?.name||A.track.toUpperCase());
 }
 function toggleSound(){
   A.sfxOn = !A.sfxOn;
@@ -1461,12 +1496,20 @@ function toggleDrop(){
   try{ localStorage.setItem('gorillas.drop', dropGorilla ? '1' : '0'); }catch(e){}
   paintSettings();
 }
+function toggleTrack(){
+  const order=['catchy','classic','slow','lofi'];
+  let idx=order.indexOf(A.track);
+  idx=(idx+1)%order.length;
+  A.setTrack(order[idx]);
+  paintSettings();
+}
 $('gravDown').onclick = ()=> setGravity(gravity - 1);
 $('gravUp').onclick = ()=> setGravity(gravity + 1);
 $('soundBtn').onclick = toggleSound;
 $('scanBtn').onclick = toggleScanlines;
 $('crossBtn').onclick = toggleCrosshair;
 $('dropBtn').onclick = toggleDrop;
+const _tb=$('trackBtn'); if(_tb) _tb.onclick = toggleTrack;
 document.addEventListener('keydown', e=>{
   if($('menu').style.display === 'none') return;
   if(menu.panel !== 'settings') return;
@@ -1480,6 +1523,7 @@ document.addEventListener('keydown', e=>{
 try{ crosshair = localStorage.getItem('gorillas.crosshair')==='1'; }catch(e){}
 try{ dropGorilla = localStorage.getItem('gorillas.drop')==='1'; }catch(e){}
 try{ myNick = loadNick(); if(myNick) $('nickInput')?.setAttribute('value', myNick); }catch(e){}
+try{ const t=localStorage.getItem('gorillas.track'); if(t && A.TRACKS[t]) A.setTrack(t); else A.setTrack('catchy'); }catch(e){ try{A.setTrack('catchy');}catch(e2){} }
 wireNick();
 $('titleArt').textContent = TITLE_ART;
 menu.build();
