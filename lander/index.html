@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LUNAR.BAS — modern multiplayer clone</title>
+<style>
+:root{
+  --c-bg:#000000; --c-panel:#0a0a0f; --c-line:#1f2937;
+  --c-fg:#c8c8c8; --c-dim:#5a6a7a; --c-acc:#ffb000; --c-green:#33ff66;
+  --c-cyan:#00e5ff; --c-red:#ff5544; --c-mag:#ff66ff;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:#0000AA; color:var(--c-fg);
+  font-family:"Courier New","IBM Plex Mono",ui-monospace,monospace;
+  height:100vh; overflow:hidden;
+}
+canvas{
+  position:fixed; inset:0; z-index:0; width:100vw; height:100vh;
+  display:block; background:#000010;
+}
+#hud{
+  position:fixed; top:0; left:0; right:0; z-index:10;
+  display:flex; justify-content:space-between; align-items:center; gap:12px;
+  padding:6px 10px; font-size:14px; font-weight:bold;
+  background:linear-gradient(rgba(0,0,60,.55), rgba(0,0,60,.05));
+  text-shadow:0 1px 2px rgba(0,0,0,.8);
+}
+#hud .active{color:var(--c-acc); text-shadow:0 0 8px var(--c-acc)}
+#hud .p1{color:var(--c-green)} #hud .p2{color:var(--c-cyan)}
+#hud #clockTag{color:#fff; font-size:13px}
+#msg{
+  position:fixed; top:34px; left:0; right:0; z-index:10;
+  text-align:center; padding:4px 6px; color:var(--c-acc);
+  font-weight:bold; letter-spacing:1px; font-size:14px;
+  text-shadow:0 1px 2px rgba(0,0,0,.8); pointer-events:none;
+}
+/* original line-150 table: SEC | MI+FT | MPH | LB FUEL | BURN RATE */
+#tab{
+  position:fixed; top:60px; left:50%; transform:translateX(-50%); z-index:10;
+  display:flex; gap:18px; padding:4px 10px; font-size:12px; font-weight:bold;
+  background:rgba(0,0,40,.55); border:1px solid #000066; border-radius:4px;
+  color:var(--c-green); text-shadow:0 1px 2px rgba(0,0,0,.8); letter-spacing:.5px;
+  pointer-events:none; white-space:nowrap;
+}
+#tab b{color:#FFFF55; font-weight:bold}
+#tab .lbl{color:#5a6a7a}
+#rivalTag{
+  position:fixed; top:88px; left:50%; transform:translateX(-50%); z-index:10;
+  display:none; font-size:12px; font-weight:bold; color:var(--c-cyan);
+  background:rgba(0,0,40,.55); border:1px solid #000066; border-radius:4px;
+  padding:3px 10px; letter-spacing:.5px; text-shadow:0 1px 2px rgba(0,0,0,.8);
+  pointer-events:none; white-space:nowrap;
+}
+/* teletype console (verbatim .bas output) */
+#console{
+  position:fixed; left:10px; bottom:64px; z-index:5; width:min(430px,46vw);
+  font-size:12px; line-height:1.5; color:#33ff66; text-shadow:0 0 6px rgba(51,255,102,.4);
+  pointer-events:none; font-weight:bold;
+}
+#console div{white-space:pre-wrap}
+#console .dim{color:#5a6a7a}
+#controls{
+  position:fixed; bottom:0; left:0; right:0; z-index:10;
+  display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; justify-content:center;
+  padding:8px 12px;
+  background:linear-gradient(rgba(0,0,60,.05), rgba(0,0,60,.6));
+}
+#controls .stat{display:flex; align-items:center; gap:5px; color:var(--c-fg); letter-spacing:1px; text-shadow:0 1px 2px rgba(0,0,0,.8)}
+#controls .hint{display:flex; align-items:center; gap:2px; color:var(--c-fg); font-size:11px; text-shadow:0 1px 2px rgba(0,0,0,.8)}
+#controls kbd{
+  color:#fff; background:rgba(0,0,60,.7); border:1px solid #55FFFF; border-radius:3px;
+  padding:0 4px; font-family:inherit; font-size:10px;
+}
+input[type=number]{
+  width:64px; background:rgba(0,0,40,.7); color:var(--c-acc); border:1px solid #55FFFF; padding:3px 4px;
+  border-radius:3px; font-family:inherit; font-size:14px; font-weight:bold;
+}
+input[type=range]{width:130px; accent-color:var(--c-acc)}
+#menu .panel input[type=text]{
+  width:120px; background:#000055; color:#FFFF55; border:1px solid #55FFFF;
+  padding:4px 6px; border-radius:3px; font-family:inherit; font-size:14px;
+  letter-spacing:2px; text-transform:lowercase;
+}
+button{
+  background:var(--c-acc); border:0; color:#161208; font-family:inherit; font-weight:bold;
+  padding:6px 14px; border-radius:3px; cursor:pointer; font-size:14px; letter-spacing:1px;
+}
+button:hover{filter:brightness(1.12)}
+button.ghost{background:#1c2430; color:var(--c-fg); border:1px solid #334}
+button:disabled{opacity:.35; cursor:default}
+button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outline-offset:1px}
+
+/* ---------- DOS menu (QBasic blue) ---------- */
+#menu{
+  position:fixed; inset:0; background:#0000AA; z-index:50;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:20px; text-align:center; overflow:auto; color:#FFFFFF;
+}
+#menu .crt-inner{
+  width:min(680px,94vw);
+  background:#0000AA;
+  border:2px solid #55FFFF;
+  box-shadow:0 0 0 2px #000055;
+  padding:14px 18px;
+}
+#menu .bar{
+  display:flex; justify-content:space-between; color:#AAAAAA;
+  font-size:12px; padding:4px 2px; border-bottom:1px solid #55FFFF;
+}
+#menu .bar b{color:#FFFF55}
+#menu pre.title{
+  margin:12px 0 0; font-size:clamp(9px,1.8vw,13px); line-height:1.12;
+  color:#FFFF55; white-space:pre;
+}
+#menu .tagline{color:#55FFFF; font-size:13px; letter-spacing:2px; margin:8px 0 2px}
+#menu .version{color:#AAAAAA; font-size:11px; margin-bottom:16px}
+#menu ul{
+  list-style:none; margin:0 auto 16px; padding:0; text-align:left; width:min(460px,100%);
+}
+#menu li{
+  padding:8px 12px; margin:3px 0; cursor:pointer; font-size:16px; letter-spacing:1px;
+  border:1px solid transparent; display:flex; justify-content:space-between; gap:10px; color:#FFFFFF;
+}
+#menu li .desc{color:#55FFFF; font-size:12px; letter-spacing:0}
+#menu li.sel{background:#FFFF55; color:#0000AA; border-color:#FFFF55}
+#menu li.sel .desc{color:#0000AA}
+#menu li .cur{visibility:hidden; font-weight:bold}
+#menu li.sel .cur{visibility:visible; animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+#menu .foot{
+  color:#AAAAAA; font-size:12px; border-top:1px solid #55FFFF; padding-top:10px;
+  line-height:1.7;
+}
+#menu .foot kbd{
+  color:#FFFF55; background:#000055; border:1px solid #55FFFF; border-radius:3px;
+  padding:1px 6px; font-family:inherit;
+}
+#menu .foot a{color:#55FFFF}
+#menu button.ghost{
+  background:#000055; color:#FFFF55; border:1px solid #55FFFF;
+}
+#menu button.ghost:hover{filter:brightness(1.3)}
+/* sub-panels (net / help) */
+#menu .panel{
+  display:none; flex-direction:column; gap:10px; width:min(520px,94vw);
+  text-align:left; margin:0 auto; font-size:14px; line-height:1.5; color:#FFFFFF;
+}
+#menu .panel h2{color:#FFFF55; font-size:18px; margin:4px 0; letter-spacing:2px; border-bottom:1px solid #55FFFF; padding-bottom:6px}
+#menu .panel code{
+  background:#000055; color:#FFFF55; padding:2px 6px; border-radius:3px; word-break:break-all;
+}
+#menu .panel .dim{color:#AAAAAA}
+#menu .panel .hint{color:#55FFFF}
+#menu .panel .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+#menu .panel .status{min-height:1.4em; color:#55FFFF}
+#menu .panel .players{display:flex; flex-direction:column; gap:6px; margin:2px 0}
+#menu .panel .slot{
+  display:flex; justify-content:space-between; align-items:center;
+  background:#000055; border:1px solid #000077; padding:6px 10px; border-radius:3px;
+  font-size:14px; letter-spacing:1px;
+}
+#menu .panel .slot .pname{color:#FFFFFF}
+#menu .panel .slot .pstate{color:#AAAAAA}
+#menu .panel .slot .pstate.ok{color:#33ff66}
+#netLink{font-size:12px; color:#AAAAAA; word-break:break-all}
+</style>
+</head>
+<body>
+<canvas id="cv" width="960" height="600"></canvas>
+<div id="hud">
+  <span id="p1tag" class="p1"></span>
+  <span id="clockTag">T+ 000s</span>
+  <span id="p2tag" class="p2"></span>
+</div>
+<div id="msg"></div>
+<div id="tab">
+  <span><span class="lbl">SEC</span> <b id="tSec">0</b></span>
+  <span><span class="lbl">MI+FT</span> <b id="tMi">120</b> <span id="tFt">+0</span></span>
+  <span><span class="lbl">MPH</span> <b id="tMph">3600</b></span>
+  <span><span class="lbl">LB FUEL</span> <b id="tFuel">16500</b></span>
+  <span><span class="lbl">BURN RATE</span> <b id="tBurn">0</b></span>
+</div>
+<div id="rivalTag"></div>
+<div id="console"></div>
+
+<div id="controls">
+  <span class="stat">BURN RATE <input type="range" id="burnR" min="0" max="200" value="0" step="0.5"><input type="number" id="burnN" min="0" max="200" value="0" step="0.5"></span>
+  <button id="setBtn">SET BURN &#9166;</button>
+  <button id="paceBtn" class="ghost" title="toggle turn playback speed">PACE: FAST &#9197;</button>
+  <span class="hint"><kbd>&#8593;</kbd><kbd>&#8595;</kbd> burn &nbsp; <kbd>ENTER</kbd> set</span>
+  <button id="rematchBtn" class="ghost" style="display:none">FLY AGAIN</button>
+  <button id="muteBtn" class="ghost" title="toggle music/sfx">SND ON</button>
+  <button id="menuBtn" class="ghost" style="display:none">ESC MENU</button>
+</div>
+
+<div id="menu">
+  <div class="crt-inner">
+    <div class="bar"><span><b>LUNAR.EXE</b></span><span>CREATIVE&nbsp;COMPUTING&nbsp;EDITION&nbsp;2026</span></div>
+    <pre class="title" id="titleArt"></pre>
+    <div class="tagline">&#9733;&nbsp;MODERN&nbsp;MULTIPLAYER&nbsp;CLONE&nbsp;&#9733;</div>
+    <div class="version">v1.0 &middot; original (c)1978 Creative Computing &middot; faithful physics</div>
+
+    <ul id="menuList"></ul>
+
+    <!-- ONLINE panel -->
+    <div class="panel" id="netPanel">
+      <h2>&gt; ONLINE &middot; P2P RACE</h2>
+      <div class="row">ROOM CODE: <code id="roomCode">&hellip;</code></div>
+      <div>INVITE LINK:</div>
+      <div id="netLink">&nbsp;</div>
+      <div class="row">
+        <button id="copyBtn" class="ghost">COPY LINK</button>
+        <button id="backNet" class="ghost">BACK</button>
+      </div>
+      <div class="row">
+        <span>JOIN CODE:</span>
+        <input type="text" id="joinCode" maxlength="20" autocomplete="off" spellcheck="false" placeholder="koala-42">
+        <button id="joinBtn" class="ghost">JOIN</button>
+      </div>
+      <div class="players">
+        <div class="slot"><span class="pname">YOU</span><span class="pstate ok" id="state0">READY</span></div>
+        <div class="slot"><span class="pname">OPPONENT</span><span class="pstate" id="state1">WAITING&hellip;</span></div>
+      </div>
+      <div class="row"><button id="startBtn" class="ghost" disabled>START RACE</button></div>
+      <div class="status" id="netStatus">Waiting to connect&hellip;</div>
+      <div class="hint">Browsers connect directly over WebRTC (Trystero). Both pilots drop onto the same moon and race to land. Host: share the link, then press START when your opponent joins. Guest: paste a room code (e.g. koala-42) and press JOIN.</div>
+    </div>
+
+    <!-- HELP panel -->
+    <div class="panel" id="helpPanel">
+      <h2>&gt; INSTRUCTIONS</h2>
+      <div>This is a computer simulation of an Apollo lunar landing capsule.</div>
+      <div>The on-board computer has failed (it was made by Xerox) so you have to land the capsule manually.</div>
+      <div>Set burn rate of retro rockets to any value between <b>0 (free fall)</b> and <b>200 (maximum burn)</b> pounds per second. Set a new burn rate every <b>10 seconds</b>.</div>
+      <div>Capsule weight 32,500 lbs; fuel weight 16,000 lbs. Moon gravity, retro thrust and the rocket equation are transcribed 1:1 from the original 1978 BASIC.</div>
+      <div><b>Landing quality</b> &mdash; impact velocity &le;1.2 mph: PERFECT LANDING; &le;10 mph: GOOD LANDING; &le;60 mph: craft damage; faster: no survivors.</div>
+      <div><b>Score</b> = fuel left (lbs) + landing bonus (PERFECT 2,000 &middot; GOOD 1,000 &middot; DAMAGE 400 &middot; CRASH 0). In a P2P race, a safe landing beats any crash; ties go to higher score, then longer survival.</div>
+      <div class="row"><button id="backHelp" class="ghost">BACK</button></div>
+    </div>
+
+    <div class="foot">
+      <kbd>&#8593;</kbd><kbd>&#8595;</kbd> select &nbsp; <kbd>ENTER</kbd> choose &nbsp; <kbd>ESC</kbd> back / menu<br>
+      IN-GAME: <kbd>&#8593;</kbd><kbd>&#8595;</kbd> burn rate &nbsp; <kbd>ENTER</kbd> set burn &nbsp; <kbd>ESC</kbd> menu<br>
+      <span id="bestPilot"></span> &nbsp;&middot;&nbsp; <a href="../">GORILLAS.BAS &#8592; sibling game</a>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+'use strict';
+
+// ============================================================
+//  LUNAR.BAS — faithful clone
+//  Physics transcribed 1:1 from the 1978 Creative Computing
+//  "LUNAR" program (Jim Storer's lander, David Ahl's BASIC).
+//  Reference: lander/lunar.bas (verbatim download).
+// ============================================================
+
+// --- physics constants (BASIC lines 120-150) ---------------
+const G = 1e-3;      // line 140: moon gravity, miles/s^2
+const Z = 1.8;       // line 140: retro exhaust velocity scale, mi/s
+const A0 = 120;      // initial altitude, miles
+const V0 = 1;        // initial velocity, mi/s downward (3600 mph)
+const M0 = 33000;    // capsule weight, lbs
+const N0 = 16500;    // fuel weight, lbs
+const TURN = 10;     // line 150: seconds per burn decision
+const STEP = 0.05;   // integration sub-step (BASIC line 420/430 series)
+const MAXK = 200;    // max burn rate, lbs/s
+
+// --- RNG (deterministic: decor is cosmetic, physics is not) --
+function mulberry32(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const fnRan = (rng,x) => Math.floor(rng()*x)+1;
+
+// ============================================================
+//  AUDIO — chiptune engine (Web Audio, no external files)
+// ============================================================
+const mtof = n => 440 * Math.pow(2, (n-69)/12);
+const AU = {
+  ac: null, master: null, musicGain: null, sfxGain: null,
+  sfxOn: true, bpm: 120,
+  ensure(){
+    if(this.ac) return true;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return false;
+    this.ac = new AC();
+    this.master = this.ac.createGain();
+    this.master.gain.value = 0.85;
+    this.master.connect(this.ac.destination);
+    this.musicGain = this.ac.createGain();
+    this.musicGain.gain.value = 0.12;
+    this.musicGain.connect(this.master);
+    this.sfxGain = this.ac.createGain();
+    this.sfxGain.gain.value = 0.9;
+    this.sfxGain.connect(this.master);
+    return true;
+  },
+  resume(){ if(this.ac && this.ac.state==='suspended') this.ac.resume(); },
+  tone(freq, t0, dur, type, dest, vol, slideTo){
+    const o = this.ac.createOscillator();
+    const g = this.ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20,slideTo), t0+dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0+0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    o.connect(g).connect(dest);
+    o.start(t0); o.stop(t0+dur+0.02);
+  },
+  noise(t0, dur, vol, dest, hp){
+    const len = Math.floor(this.ac.sampleRate*dur);
+    const buf = this.ac.createBuffer(1, len, this.ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = (Math.random()*2-1)*(1-i/len);
+    const s = this.ac.createBufferSource();
+    s.buffer = buf;
+    const f = this.ac.createBiquadFilter();
+    f.type = hp ? 'highpass' : 'lowpass';
+    f.frequency.value = hp ? 2500 : 900;
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    s.connect(f).connect(g).connect(dest);
+    s.start(t0);
+  },
+  // 32-step 16th-note loop, A minor — dreamy for a moon landing.
+  LEAD : [69,0,72,0, 76,0,72,69,  67,0,71,0, 74,0,71,67,
+          65,0,69,0, 72,0,69,65,  64,0,67,0, 71,0,67,64],
+  BASS : [45,45,43,43, 41,41,40,40],
+  startMusic(){
+    if(!this.ensure()) return;
+    this.resume();
+    if(this.timer) return;
+    this.musicOn = true;
+    this.nextT = this.ac.currentTime + 0.06;
+    this.step = 0;
+    const spb = 60/this.bpm/4;
+    this.timer = setInterval(() => this.schedule(spb), 25);
+  },
+  schedule(spb){
+    if(!this.ac) return;
+    while(this.nextT < this.ac.currentTime + 0.12){
+      const s = this.step % 32;
+      const t = this.nextT;
+      const lead = this.LEAD[s];
+      if(lead) this.tone(mtof(lead), t, spb*0.9, 'square', this.musicGain, 0.15);
+      if(s % 8 === 0){
+        const b = this.BASS[(s/8)|0];
+        this.tone(mtof(b), t, spb*7.6, 'triangle', this.musicGain, 0.22);
+      }
+      if(s % 16 === 8) this.noise(t, 0.03, 0.03, this.musicGain, true);
+      this.nextT += spb;
+      this.step++;
+    }
+  },
+  stopMusic(){
+    this.musicOn = false;
+    if(this.timer){ clearInterval(this.timer); this.timer = null; }
+  },
+  // continuous thrust rumble: oscillator pitched by burn rate
+  thrust: null, thrustGain: null,
+  thrustOn(k){
+    if(!this.sfxOn) return;
+    if(!this.ensure()) return;
+    if(this.thrust) return;
+    this.resume();
+    const o = this.ac.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = 40 + k;
+    const g = this.ac.createGain();
+    g.gain.value = 0.0001;
+    g.gain.exponentialRampToValueAtTime(Math.min(0.28, 0.06 + k/200*0.22), 0.08);
+    o.connect(g).connect(this.sfxGain);
+    o.start();
+    this.thrust = o; this.thrustGain = g;
+  },
+  thrustOff(){
+    if(this.thrust){
+      try{
+        this.thrustGain.gain.exponentialRampToValueAtTime(0.0001, this.ac.currentTime+0.12);
+        this.thrust.stop(this.ac.currentTime+0.15);
+      }catch(e){}
+      this.thrust = null; this.thrustGain = null;
+    }
+  },
+  sfx(kind){
+    if(!this.sfxOn) return;
+    if(!this.ensure()) return;
+    this.resume();
+    const t = this.ac.currentTime, g = this.sfxGain;
+    if(kind === 'set'){
+      this.tone(660, t, 0.06, 'square', g, 0.16);
+    }else if(kind === 'fuel'){
+      this.tone(880, t, 0.09, 'square', g, 0.18);
+      this.tone(880, t+0.16, 0.09, 'square', g, 0.18);
+      this.tone(660, t+0.32, 0.12, 'square', g, 0.18, 440);
+    }else if(kind === 'perfect'){
+      [523,659,784,1047,1319].forEach((f,i)=>this.tone(f, t+i*0.09, 0.18, 'square', g, 0.2));
+      this.noise(t, 0.4, 0.15, g, true);
+    }else if(kind === 'good'){
+      [523,659,784].forEach((f,i)=>this.tone(f, t+i*0.08, 0.14, 'square', g, 0.18));
+    }else if(kind === 'damage'){
+      [392,330,262,196].forEach((f,i)=>this.tone(f, t+i*0.12, 0.2, 'square', g, 0.16));
+    }else if(kind === 'boom'){
+      this.noise(t, 0.5, 0.3, g, false);
+      this.tone(110, t, 0.5, 'sawtooth', g, 0.25, 40);
+    }else if(kind === 'win'){
+      [523,659,784,1047].forEach((f,i)=>this.tone(f, t+i*0.1, 0.16, 'square', g, 0.2));
+    }else if(kind === 'lose'){
+      [392,349,311,262].forEach((f,i)=>this.tone(f, t+i*0.1, 0.18, 'square', g, 0.18));
+    }
+  }
+};
+
+// ============================================================
+//  GAME STATE
+// ============================================================
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const H = 600, GROUND = H - 46;          // moon surface line
+
+let mode = null;                          // 'solo' | 'hot' | 'net'
+let phase = 'idle';                       // 'input' | 'burn' | 'done'
+let A, V, M, L, T, K, fuelOut, fuelMsgShown;
+let turn = 0;
+let result = null;                        // {W,L,quality,score,fuel,bonus}
+let pilot = 0;                            // hotseat: active pilot
+let hotScores = [null, null];
+let names = ['PILOT','RECORD'];
+let myIndex = 0;                          // net: 0=host/YOU
+let score = 0;
+let seed = 1;
+let rng = mulberry32(seed);
+
+// decor (cosmetic, seeded)
+let stars = [], craters = [], earthX = 0, earthY = 0;
+function genDecor(s){
+  rng = mulberry32(s|0);
+  stars = [];
+  for(let i=0;i<140;i++) stars.push({x: rng()*2200, y: rng()*H*0.85, r: rng()*1.3+0.4, ph: rng()*Math.PI*2});
+  craters = [];
+  let x = 30;
+  while(x < 2200){
+    const w = 40 + rng()*90, d = 6 + rng()*16;
+    craters.push({x, w, d});
+    x += w + 30 + rng()*70;
+  }
+  const a = rng()*Math.PI*2;
+  earthX = 120 + Math.cos(a)*70;
+  earthY = 80 + Math.sin(a)*60;
+}
+
+// --- verbatim physics (BASIC lines 420-430) -----------------
+function burnStep(dt, k, a, v, m){
+  const Q = dt*k/m;
+  const J = v + G*dt + Z*(-Q - Q*Q/2 - Math.pow(Q,3)/3 - Math.pow(Q,4)/4 - Math.pow(Q,5)/5);
+  const I = a - G*dt*dt/2 - v*dt + Z*dt*(Q/2 + Q*Q/6 + Math.pow(Q,3)/12 + Math.pow(Q,4)/20 + Math.pow(Q,5)/30);
+  return {I, J};
+}
+
+function resetFlight(){
+  A = A0; V = V0; M = M0; L = 0; T = TURN; K = 0; turn = 0;
+  fuelOut = false; fuelMsgShown = false;
+  result = null; score = 0;
+  AU.thrustOff();
+  $('console').innerHTML = '';
+  syncBurnUI();
+}
+
+function consoleLine(txt, cls){
+  const d = document.createElement('div');
+  if(cls) d.className = cls;
+  d.textContent = txt;
+  $('console').appendChild(d);
+  while($('console').children.length > 24) $('console').removeChild($('console').firstChild);
+}
+
+// impact quality checks — verbatim lines 274-320
+function qualityOf(W){
+  if(W <= 1.2) return 'PERFECT';
+  if(W <= 10)  return 'GOOD';
+  if(W <= 60)  return 'DAMAGE';
+  return 'CRASH';
+}
+const BONUS = {PERFECT: 2000, GOOD: 1000, DAMAGE: 400, CRASH: 0};
+
+function stepSim(){
+  if(!fuelOut && M - N0 < 1e-3){          // line 160: fuel out
+    fuelOut = true;
+    if(!fuelMsgShown){
+      fuelMsgShown = true;
+      consoleLine(`FUEL OUT AT ${L.toFixed(1)} SECONDS — FREE FALL`, 'dim');
+      setMsg('FUEL OUT — FREE FALL');
+      AU.sfx('fuel');
+    }
+  }
+  const k = fuelOut ? 0 : K;
+  const {I, J} = burnStep(STEP, k, A, V, M);
+  if(I <= 0){                              // touched down within this sub-step
+    // bisect for the exact crossing A(τ)=0 (refine loop, lines 340-360)
+    let lo = 0, hi = STEP;
+    for(let i=0;i<50;i++){
+      const mid = (lo+hi)/2;
+      if(burnStep(mid, k, A, V, M).I > 0) lo = mid; else hi = mid;
+    }
+    const tau = (lo+hi)/2;
+    const r = burnStep(tau, k, A, V, M);
+    L += tau;
+    finish(3600*r.J, Math.max(0, M - tau*k - N0));
+    return;
+  }
+  A = I; V = J; M -= STEP*k; L += STEP; T -= STEP;
+  if(T <= 0){
+    if(fuelOut){ T = TURN; }               // terminal free fall, no inputs
+    else {
+      phase = 'input';                     // line 170 -> 150: read new burn rate
+      AU.thrustOff();
+      setMsg(`SET BURN RATE 0-200 LB/S — TURN ${turn+1}`);
+      inputDeadline = netMode() ? performance.now() + 15000 : null;
+      syncBurnUI();
+    }
+  }
+}
+
+function finish(W, fuel){
+  const quality = qualityOf(W);
+  const bonus = BONUS[quality];
+  // a crash scores 0 — fuel only pays out on a safe touchdown
+  score = quality === 'CRASH' ? 0 : Math.round(fuel) + bonus;
+  result = {W, L, quality, score, fuel: Math.round(fuel), bonus};
+  phase = 'done';
+  AU.thrustOff();
+  inputDeadline = null;
+  // verbatim report lines 260-320
+  consoleLine(`ON MOON AT ${L.toFixed(1)} SECONDS - IMPACT VELOCITY ${W.toFixed(2)} MPH`);
+  if(quality === 'PERFECT'){ consoleLine('PERFECT LANDING!'); setMsg('PERFECT LANDING!'); AU.sfx('perfect'); }
+  else if(quality === 'GOOD'){ consoleLine('GOOD LANDING (COULD BE BETTER)'); setMsg('GOOD LANDING (COULD BE BETTER)'); AU.sfx('good'); }
+  else if(quality === 'DAMAGE'){
+    consoleLine("CRAFT DAMAGE... YOU'RE STRANDED HERE UNTIL A RESCUE");
+    consoleLine('PARTY ARRIVES. HOPE YOU HAVE ENOUGH OXYGEN!');
+    setMsg('CRAFT DAMAGE — STRANDED');
+    AU.sfx('damage');
+  } else {
+    consoleLine('SORRY THERE WERE NO SURVIVORS. YOU BLEW IT!');
+    consoleLine(`IN FACT, YOU BLASTED A NEW LUNAR CRATER ${(W*0.227).toFixed(0)} FEET DEEP!`);
+    setMsg('NO SURVIVORS — YOU BLEW IT!');
+    AU.sfx('boom');
+  }
+  consoleLine(`SCORE ${score.toLocaleString('en-US')} = ${result.fuel.toLocaleString('en-US')} LB FUEL + ${bonus.toLocaleString('en-US')} BONUS`);
+  consoleLine('TRY AGAIN??', 'dim');       // line 440
+  setShake(quality === 'CRASH' ? 26 : Math.min(18, W*2));
+  dustBurst(quality === 'CRASH');
+  if(quality === 'CRASH') debrisBurst();
+  if(quality === 'PERFECT') sparkleBurst();
+
+  if(mode === 'solo'){ saveRecord(); setRematch('FLY AGAIN'); }
+  else if(mode === 'hot'){ hotScores[pilot] = result; onHotseatDone(); }
+  else if(mode === 'net'){ net.onMyDone(); }
+  updateHUD();
+}
+
+// ============================================================
+//  PARTICLES / SHAKE (the fun 10%)
+// ============================================================
+let parts = [];
+let shake = 0;
+function setShake(v){ shake = Math.max(shake, v); }
+function spawn(p){ if(parts.length < 400) parts.push(p); }
+function dustBurst(crash){
+  for(let i=0;i<(crash?36:22);i++)
+    spawn({x: W2() + (Math.random()-0.5)*30, y: groundY()-4, vx:(Math.random()-0.5)*(crash?7:4), vy:-Math.random()*(crash?6:3.5)-0.5, life: 1, decay: 0.012+Math.random()*0.02, col: crash?'#888888':'#c8b890', r: 2+Math.random()*3});
+}
+function debrisBurst(){
+  for(let i=0;i<46;i++)
+    spawn({x: W2(), y: groundY()-8, vx:(Math.random()-0.5)*9, vy:-Math.random()*8-1, life: 1, decay: 0.01+Math.random()*0.015, col: ['#ffb000','#ff5544','#aaaaaa','#888888'][i%4], r: 2+Math.random()*2.5});
+}
+function sparkleBurst(){
+  for(let i=0;i<14;i++)
+    spawn({x: W2() + (Math.random()-0.5)*40, y: groundY()-6, vx:(Math.random()-0.5)*2.4, vy:-Math.random()*2.2, life: 1, decay: 0.015+Math.random()*0.02, col:'#FFFF55', r: 1.6});
+}
+function tickParts(dt){
+  const f = dt/16.67;                     // normalize to 60fps frames
+  for(const p of parts){
+    p.vy += (p.col === '#888888' || p.col === '#c8b890' ? 0.20 : 0.10) * f;
+    p.x += p.vx*f;
+    p.y += p.vy*f;
+    p.life -= p.decay;
+  }
+  parts = parts.filter(p => p.life > 0);
+}
+
+// ============================================================
+//  DRAWING
+// ============================================================
+const W2 = () => cv.width/2;
+const groundY = () => GROUND * cv.height/H;
+let shipSink = 0, shipFlash = 0;
+
+function shipY(){
+  const skyH = (GROUND - 70) * cv.height/H;
+  let f;
+  if(A > 10) f = 0.5 + 0.5*Math.log10(A/10)/Math.log10(12);
+  else f = A/10*0.5;
+  return groundY() - Math.max(0, Math.min(1, f))*skyH;
+}
+function shipScale(){
+  const s = A < 0.5 ? 1 + (1 - A/0.5)*0.45 : 1;
+  return s * cv.height/H * 1.5;
+}
+
+function drawStars(ts){
+  ctx.fillStyle = '#FFFFFF';
+  for(const s of stars){
+    const tw = 0.35 + 0.65*Math.abs(Math.sin(ts/500 + s.ph));
+    ctx.globalAlpha = tw*0.8;
+    ctx.fillRect(s.x*cv.width/2200, s.y*cv.height/H, s.r, s.r);
+  }
+  ctx.globalAlpha = 1;
+}
+function drawEarth(ts){
+  const ex = earthX*cv.width/2200, ey = earthY*cv.height/H, R = 30*cv.height/H;
+  const g = ctx.createRadialGradient(ex-R*0.3, ey-R*0.3, R*0.2, ex, ey, R*1.25);
+  g.addColorStop(0, 'rgba(0,140,255,0.25)');
+  g.addColorStop(1, 'rgba(0,140,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(ex, ey, R*1.25, 0, 7); ctx.fill();
+  ctx.fillStyle = '#1a6bff';
+  ctx.beginPath(); ctx.arc(ex, ey, R, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#66ccff'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.arc(ex-R*0.18, ey-R*0.1, R*0.52, 0.3, 2.2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(ex+R*0.22, ey+R*0.05, R*0.4, 3.4, 5.4); ctx.stroke();
+  ctx.beginPath(); ctx.arc(ex-R*0.1, ey+R*0.3, R*0.3, 0.8, 2.8); ctx.stroke();
+  ctx.fillStyle = '#9adcff';
+  ctx.beginPath(); ctx.arc(ex-R*0.3, ey-R*0.35, R*0.28, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(ex+R*0.32, ey-R*0.3, R*0.2, 0, 7); ctx.fill();
+}
+function drawSurface(ts){
+  const gy = groundY();
+  const grad = ctx.createLinearGradient(0, gy, 0, cv.height);
+  grad.addColorStop(0, '#6b5f52');
+  grad.addColorStop(0.25, '#4a4138');
+  grad.addColorStop(1, '#221d18');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, gy, cv.width, cv.height-gy);
+  // horizon glow
+  const hg = ctx.createLinearGradient(0, gy-14, 0, gy);
+  hg.addColorStop(0, 'rgba(120,100,80,0)');
+  hg.addColorStop(1, 'rgba(120,100,80,0.35)');
+  ctx.fillStyle = hg; ctx.fillRect(0, gy-14, cv.width, 14);
+  // craters
+  for(const c of craters){
+    const cx = c.x*cv.width/2200, cw = c.w*cv.width/2200, cd = c.d*cv.height/H;
+    ctx.fillStyle = '#332e28';
+    ctx.beginPath();
+    ctx.ellipse(cx, gy, cw/2, cd, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.strokeStyle = '#7a6f61'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(cx, gy, cw/2, cd, 0, Math.PI, 0);
+    ctx.stroke();
+  }
+  // surface texture dots
+  ctx.fillStyle = 'rgba(200,180,150,0.25)';
+  for(let x=6;x<cv.width;x+=22) ctx.fillRect(x, gy+8, 8, 1.5);
+}
+function drawShip(ts){
+  const x = W2(), y = shipY() + shipSink, s = shipScale();
+  const vib = (phase==='burn' && K>0) ? (Math.random()-0.5)*1.6 : 0;
+  ctx.save();
+  ctx.translate(x + vib, y);
+  ctx.scale(s, s);
+  // exhaust flame
+  if(phase === 'burn' && K > 0 && !fuelOut){
+    const len = (8 + K/200*20) * (0.85 + Math.random()*0.3);
+    const fl = ctx.createLinearGradient(0, 14, 0, 14+len);
+    fl.addColorStop(0, '#fff8c0');
+    fl.addColorStop(0.35, '#ffb000');
+    fl.addColorStop(1, 'rgba(255,80,0,0)');
+    ctx.fillStyle = fl;
+    ctx.beginPath();
+    ctx.moveTo(-4.5, 12); ctx.lineTo(4.5, 12); ctx.lineTo(1.4, 14+len); ctx.lineTo(-1.4, 14+len);
+    ctx.closePath(); ctx.fill();
+  }
+  // legs + pads
+  ctx.strokeStyle = '#cccccc'; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-7, 6); ctx.lineTo(-12, 13); ctx.lineTo(-15, 13);
+  ctx.moveTo(7, 6); ctx.lineTo(12, 13); ctx.lineTo(15, 13);
+  ctx.stroke();
+  // descent engine bell
+  ctx.fillStyle = '#999999';
+  ctx.beginPath();
+  ctx.moveTo(-5, 8); ctx.lineTo(5, 8); ctx.lineTo(6.5, 13); ctx.lineTo(-6.5, 13);
+  ctx.closePath(); ctx.fill();
+  // body
+  const bodyG = ctx.createLinearGradient(0, -12, 0, 8);
+  bodyG.addColorStop(0, '#e8e8e8');
+  bodyG.addColorStop(1, '#9a9a9a');
+  ctx.fillStyle = bodyG;
+  ctx.beginPath();
+  ctx.moveTo(-9, -12); ctx.lineTo(9, -12); ctx.lineTo(6, 8); ctx.lineTo(-6, 8);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#666666'; ctx.lineWidth = 1;
+  ctx.stroke();
+  // window
+  ctx.fillStyle = '#00e5ff';
+  ctx.beginPath(); ctx.arc(0, -4.5, 3, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#005566'; ctx.stroke();
+  // beacon
+  if(Math.sin(ts/300) > 0){
+    ctx.fillStyle = '#ff5544';
+    ctx.beginPath(); ctx.arc(0, -14, 1.6, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawShake(ts){
+  if(shake > 0.2){
+    ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
+    shake *= 0.88;
+  }
+}
+function drawParticles(){
+  for(const p of parts){
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.col;
+    ctx.fillRect(p.x, p.y, p.r, p.r);
+  }
+  ctx.globalAlpha = 1;
+}
+// altitude tick strip (right edge)
+function drawAltStrip(ts){
+  const right = cv.width - 14;
+  const topY = 70*cv.height/H, botY = groundY();
+  const h = botY - topY;
+  // mile marks at 10,20,...,110
+  ctx.strokeStyle = 'rgba(85,255,255,0.4)'; ctx.lineWidth = 1;
+  ctx.fillStyle = 'rgba(85,255,255,0.7)';
+  ctx.font = '10px "Courier New", monospace';
+  for(let mi = 10; mi <= 110; mi += 10){
+    const f = mi > 10 ? 0.5 + 0.5*Math.log10(mi/10)/Math.log10(12) : 0.5;
+    const y = botY - f*h;
+    ctx.beginPath(); ctx.moveTo(right, y); ctx.lineTo(right+6, y); ctx.stroke();
+    ctx.fillText(mi, right-24, y+3);
+  }
+  // current altitude marker
+  const fy = shipY();
+  ctx.fillStyle = '#FFFF55';
+  ctx.fillRect(right-2, fy-2, 10, 4);
+}
+
+// ============================================================
+//  MAIN LOOP
+// ============================================================
+let lastTs = 0, simAcc = 0;
+const PACE = {fast: 4, live: 1};
+let pace = 'fast';
+let inputDeadline = null;
+
+function frame(ts){
+  requestAnimationFrame(frame);
+  if(!lastTs) lastTs = ts;
+  const dt = Math.min(100, ts - lastTs); lastTs = ts;
+  const menuOpen = $('menu').style.display !== 'none';
+
+  // physics: fixed sub-steps, batched per frame; deterministic per plan
+  if(phase === 'burn' && !menuOpen){
+    simAcc += dt/1000 * PACE[pace];
+    let guard = 0;
+    while(simAcc >= STEP && phase === 'burn' && guard++ < 20000){
+      simAcc -= STEP; stepSim();
+    }
+    if(phase === 'burn'){ const secs = (T/1).toFixed(1); setMsg(`BURNING ${K} LB/S — ${secs}s LEFT`); }
+  }
+  // net anti-stall: auto free-fall if the pilot idles at the prompt
+  if(phase === 'input' && netMode() && inputDeadline && performance.now() > inputDeadline){
+    inputDeadline = null;
+    setBurn(0); commitBurn();
+  }
+  if(phase !== 'burn') simAcc = 0;
+  if(phase === 'idle') simAcc = 0;
+
+  // render (paused behind the menu is fine — canvas stays frozen)
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  const sky = ctx.createLinearGradient(0, 0, 0, cv.height);
+  sky.addColorStop(0, '#000008');
+  sky.addColorStop(0.7, '#00002a');
+  sky.addColorStop(1, '#000040');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  drawStars(ts);
+  drawEarth(ts);
+  drawShake(ts);
+  drawSurface(ts);
+  drawAltStrip(ts);
+  if(mode) drawShip(ts);
+  drawParticles();
+  ctx.restore();
+
+  tickParts(dt);
+  updateHUD();
+}
+
+// ============================================================
+//  HUD / CONTROLS
+// ============================================================
+function setMsg(t){ $('msg').textContent = t; }
+function setRematch(label){
+  const b = $('rematchBtn');
+  b.style.display = '';
+  b.textContent = label;
+  b.disabled = false;
+}
+function syncBurnUI(){
+  const on = phase === 'input';
+  $('burnR').disabled = $('burnN').disabled = $('setBtn').disabled = !on;
+  if(on) $('burnR').value = $('burnN').value = K;
+}
+function setBurn(v){
+  K = Math.max(0, Math.min(MAXK, +v || 0));
+  $('burnR').value = $('burnN').value = K;
+}
+function commitBurn(){
+  if(phase !== 'input') return;
+  phase = 'burn';
+  turn++; T = TURN;
+  AU.sfx('set');
+  if(K > 0) AU.thrustOn(K);
+  consoleLine(`BURN RATE SET TO ${K} LB/S`, 'dim');
+  syncBurnUI();
+}
+function updateHUD(){
+  if(!mode) return;
+  const fs = fmtSec(L);
+  $('clockTag').textContent = 'T+ ' + fs;
+  const mi = Math.floor(A), ft = Math.floor(5280*(A-mi));
+  $('tSec').textContent = L.toFixed(0);
+  $('tMi').textContent = mi;
+  $('tFt').textContent = '+' + ft;
+  $('tMph').textContent = Math.round(3600*V).toLocaleString('en-US');
+  $('tFuel').textContent = Math.max(0, Math.round(M-N0)).toLocaleString('en-US');
+  $('tBurn').textContent = K;
+  if(mode === 'hot'){
+    $('p1tag').textContent = names[0] + (hotScores[0] ? '  '+hotScores[0].score.toLocaleString('en-US') : '') + (pilot===0?' \u25B6':'');
+    $('p2tag').textContent = (pilot===1?'\u25C0 ':'') + names[1] + (hotScores[1] ? '  '+hotScores[1].score.toLocaleString('en-US') : '');
+    $('p1tag').className = 'p1' + (pilot===0?' active':'');
+    $('p2tag').className = 'p2' + (pilot===1?' active':'');
+  } else if(mode === 'net'){
+    // derive from myIndex at render — onPeerJoin can land after startGame
+    $('p1tag').textContent = myIndex === 0 ? 'YOU' : 'OPPONENT';
+    $('p2tag').textContent = myIndex === 0 ? 'OPPONENT' : 'YOU';
+  } else {
+    $('p1tag').textContent = names[0];
+    const rec = loadRecord();
+    $('p2tag').textContent = rec ? 'BEST ' + rec.score.toLocaleString('en-US') : '';
+  }
+}
+function fmtSec(s){
+  const m = Math.floor(s/60), r = Math.floor(s%60);
+  return String(m).padStart(3,'0') + ':' + String(r).padStart(2,'0');
+}
+
+// record (localStorage)
+function loadRecord(){
+  try{ return JSON.parse(localStorage.getItem('lunar.record.v1')||'null'); }catch(e){ return null; }
+}
+function saveRecord(){
+  const rec = loadRecord();
+  if(!rec || result.score > rec.score){
+    localStorage.setItem('lunar.record.v1', JSON.stringify({score: result.score, quality: result.quality, L: result.L, W: result.W}));
+    consoleLine('NEW PILOT RECORD — ' + result.score.toLocaleString('en-US') + ' PTS');
+  }
+  paintBest();
+}
+function paintBest(){
+  const rec = loadRecord();
+  $('bestPilot').textContent = rec ? 'BEST PILOT: ' + rec.score.toLocaleString('en-US') + ' · ' + rec.quality + ' · T+' + rec.L.toFixed(0) + 's' : '';
+}
+
+// ============================================================
+//  MODES
+// ============================================================
+function netMode(){ return mode === 'net'; }
+
+function startGame(m, s){
+  mode = m;
+  seed = (s|0) || ((Math.random()*2**31)|0);
+  genDecor(seed);
+  if(m === 'solo') names = ['PILOT','RECORD'];
+  else if(m === 'hot') names = ['PLAYER 1','PLAYER 2'];
+  else if(m === 'net') names = myIndex===0 ? ['YOU','OPPONENT'] : ['OPPONENT','YOU'];
+  hideMenu();
+  $('menuBtn').style.display = '';
+  $('rivalTag').style.display = m==='net' ? '' : 'none';
+  $('rematchBtn').style.display = 'none';
+  resetFlight();
+  phase = 'input';
+  setMsg(`SET BURN RATE 0-200 LB/S — TURN ${turn+1}`);
+  inputDeadline = netMode() ? performance.now() + 15000 : null;
+  syncBurnUI();
+  updateHUD();
+  history.replaceState(null,'','#play');
+}
+function goto(hash){
+  if(location.hash === hash) route();
+  else location.hash = hash;
+}
+function route(){
+  const h = location.hash.replace(/^#\/?/, '');
+  const [page, ...rest] = h.split('/');
+  const arg = rest.join('/').trim();
+  if(page === 'play'){ if(mode) hideMenu(); else goto('#home'); return; }
+  $('menu').style.display = 'flex';
+  if(page === 'room' && arg){
+    menu.panel = 'net';
+    menu.showPanel();
+    menu.paint();
+    joinRoom(arg);
+    return;
+  }
+  menu.panel = page==='online' ? 'net' : page==='help' ? 'help' : 'main';
+  if(page === 'online' && !net.room) initNet();
+  menu.showPanel();
+  menu.paint();
+}
+window.addEventListener('hashchange', route);
+function showMenu(){ goto('#home'); }
+function hideMenu(){ $('menu').style.display = 'none'; }
+
+// ============================================================
+//  HOTSEAT
+// ============================================================
+function onHotseatDone(){
+  if(hotScores[0] && hotScores[1]){
+    const a = hotScores[0], b = hotScores[1];
+    let msg;
+    if(a.score > b.score) msg = `PLAYER 1 WINS ${a.score.toLocaleString('en-US')} - ${b.score.toLocaleString('en-US')}`;
+    else if(b.score > a.score) msg = `PLAYER 2 WINS ${b.score.toLocaleString('en-US')} - ${a.score.toLocaleString('en-US')}`;
+    else msg = `DRAW ${a.score.toLocaleString('en-US')} - ${b.score.toLocaleString('en-US')}`;
+    setMsg(msg);
+    setRematch('REMATCH');
+    AU.sfx(hotScores[0].score >= hotScores[1].score ? 'win' : 'lose');
+  } else {
+    setRematch('NEXT PILOT \u25B6');
+    setMsg(`PLAYER ${pilot+1}: ${result.quality} — ${result.score.toLocaleString('en-US')} PTS`);
+  }
+}
+$('rematchBtn').onclick = ()=>{
+  if(mode === 'solo') startGame('solo', ((Math.random()*2**31)|0));
+  else if(mode === 'hot'){
+    if(hotScores[0] && hotScores[1]){ hotScores = [null, null]; pilot = 0; startGame('hot', seed); }
+    else { pilot = 1; startGame('hot', seed); }
+  } else if(mode === 'net'){
+    net.rematch();
+  }
+};
+
+// ============================================================
+//  MENU
+// ============================================================
+const menu = {
+  idx: 0, panel: 'main',
+  items: [],
+  build(){
+    this.items = [
+      {key:'solo', label:'SOLO FLIGHT', desc:'one pilot · beat your record', act:()=>startGame('solo')},
+      {key:'hot',  label:'TWO PILOTS',  desc:'hotseat · one keyboard', act:()=>{ hotScores = [null, null]; pilot = 0; startGame('hot'); }},
+      {key:'net',  label:'ONLINE · P2P',desc:'serverless WebRTC race', act:()=>goto('#online')},
+      {key:'help', label:'INSTRUCTIONS',desc:'how to land the LEM', act:()=>goto('#help')},
+    ];
+    this.render();
+  },
+  render(){
+    const ul = $('menuList');
+    ul.innerHTML = '';
+    this.items.forEach((it,i)=>{
+      const li = document.createElement('li');
+      const cur = document.createElement('span');
+      cur.className = 'cur'; cur.textContent = '\u25B6';
+      const wrap = document.createElement('div');
+      const lab = document.createElement('span');
+      lab.className = 'lab';
+      const d = document.createElement('div');
+      d.className = 'desc'; d.textContent = it.desc||'';
+      wrap.appendChild(lab); wrap.appendChild(d);
+      li.appendChild(cur); li.appendChild(wrap);
+      li.onclick = ()=> this.choose(i);
+      li.onmouseenter = ()=> this.set(i);
+      ul.appendChild(li);
+    });
+    this.paint();
+  },
+  paint(){
+    [...$('menuList').children].forEach((li,i)=>{
+      li.classList.toggle('sel', i===this.idx);
+      const it = this.items[i];
+      li.querySelector('.lab').textContent = (typeof it.label==='function' ? it.label() : it.label);
+    });
+  },
+  set(i){
+    this.idx = (i+this.items.length)%this.items.length;
+    this.paint();
+  },
+  choose(i){
+    const it = this.items[i];
+    if(!it) return;
+    AU.resume();
+    if(it.act) it.act();
+  },
+  showPanel(){
+    $('menuList').style.display = this.panel==='main' ? '' : 'none';
+    $('netPanel').style.display = this.panel==='net' ? 'flex' : 'none';
+    $('helpPanel').style.display = this.panel==='help' ? 'flex' : 'none';
+    $('menu').style.display = 'flex';
+  }
+};
+
+document.addEventListener('keydown', e=>{
+  if($('menu').style.display === 'none') return;
+  if(menu.panel !== 'main') return;
+  if(e.key==='ArrowUp'){ e.preventDefault(); menu.set(menu.idx-1); }
+  else if(e.key==='ArrowDown'){ e.preventDefault(); menu.set(menu.idx+1); }
+  else if(e.key==='Enter'){ e.preventDefault(); menu.choose(menu.idx); }
+});
+$('backNet').onclick = ()=> goto('#home');
+$('backHelp').onclick = ()=> goto('#home');
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape'){
+    if(!mode) return;
+    const visible = $('menu').style.display !== 'none';
+    if(!visible) goto('#home');
+    else if(menu.panel === 'main') hideMenu();
+    else goto('#home');
+  }
+});
+
+// in-game keyboard
+document.addEventListener('keydown', e=>{
+  if($('menu').style.display !== 'none') return;
+  if(e.key === 'ArrowUp'){ e.preventDefault(); if(phase==='input') setBurn(K + 10); }
+  else if(e.key === 'ArrowDown'){ e.preventDefault(); if(phase==='input') setBurn(K - 10); }
+  else if(e.key === 'Enter'){ e.preventDefault(); commitBurn(); }
+  else if(e.key === ' '){ e.preventDefault(); commitBurn(); }
+});
+$('burnR').addEventListener('input', e=> setBurn(+e.target.value));
+$('burnN').addEventListener('input', e=> setBurn(+e.target.value));
+$('setBtn').onclick = ()=> commitBurn();
+$('paceBtn').onclick = ()=>{
+  pace = pace === 'fast' ? 'live' : 'fast';
+  $('paceBtn').textContent = 'PACE: ' + (pace==='fast' ? 'FAST \u23E9' : 'LIVE \u23F1');
+};
+$('menuBtn').onclick = ()=> goto('#home');
+
+// ============================================================
+//  NETWORK (Trystero P2P — serverless WebRTC race)
+// ============================================================
+const ANIMALS = ['koala','panda','tiger','lion','zebra','giraffe','monkey','dolphin','eagle','falcon','fox','wolf','bear','otter','penguin','raccoon','sloth','lemur','gecko','iguana','jaguar','leopard','llama','meerkat','narwhal','ocelot','puffin','quokka','shark','toucan','walrus','yak','alpaca','bison','camel','dingo','emu','ferret','gorilla','hamster','ibex'];
+const net = {
+  room: null, code: null, isHost: false, opponent: null, started: false,
+  initAct: null, stateAct: null, finishAct: null, ackAct: null,
+  retryTimer: null, finishTimer: null, stateTimer: null,
+  rival: null, rivalDone: null, myDone: false, resolved: false,
+  resetRival(){
+    this.rival = null; this.rivalDone = null; this.myDone = false; this.resolved = false;
+    $('rivalTag').textContent = '';
+  },
+  rematch(){
+    if(this.opponent && myIndex === 0 && phase === 'done' && this.rivalDone){
+      this.started = true;
+      this.resetRival();
+      startGame('net', ((Math.random()*2**31)|0));
+      let tries = 0;
+      (function sendInit(){
+        if(!net.opponent) return;
+        net.sendInit({seed});
+        if(++tries < 60) net.retryTimer = setTimeout(sendInit, 600);
+      })();
+    }
+  },
+  onMyDone(){
+    this.myDone = true;
+    const d = {score: result.score, W: result.W, quality: result.quality, L: result.L, fuel: result.fuel};
+    let tries = 0;
+    (function sendFinish(){
+      if(!net.opponent) return;
+      net.sendFinish(d);
+      if(++tries < 25) net.finishTimer = setTimeout(sendFinish, 600);
+    })();
+    if(this.rivalDone) this.resolve();
+    else setMsg(result.quality === 'CRASH' ? 'YOU CRASHED — OPPONENT STILL FLYING' : `YOU LANDED — ${result.score.toLocaleString('en-US')} PTS — OPPONENT STILL FLYING`);
+  },
+  resolve(){
+    if(this.resolved) return;
+    this.resolved = true;
+    const a = result, b = this.rivalDone;
+    const rank = r => r.quality === 'CRASH' ? 0 : 1;
+    let who;
+    if(rank(a) !== rank(b)) who = rank(a) > rank(b) ? 0 : 1;
+    else if(a.score !== b.score) who = a.score > b.score ? 0 : 1;
+    else if(a.L !== b.L) who = a.L > b.L ? 0 : 1;
+    else who = -1;
+    const av = a.score.toLocaleString('en-US'), bv = b.score.toLocaleString('en-US');
+    if(who === 0){ setMsg(`YOU WIN THE RACE — ${av} vs ${bv}`); AU.sfx('win'); }
+    else if(who === 1){ setMsg(`OPPONENT WINS — ${bv} vs ${av}`); AU.sfx('lose'); }
+    else setMsg(`DEAD HEAT — ${av} - ${bv}`);
+    if(myIndex === 0){ setRematch('REMATCH'); }
+    else { const b2 = $('rematchBtn'); b2.style.display = 'none'; }
+    consoleLine('RACE RESULT: ' + (who === 0 ? 'YOU WIN' : who === 1 ? 'OPPONENT WINS' : 'DEAD HEAT'));
+  }
+};
+
+async function loadTrystero(){
+  try{ return await import('https://esm.run/trystero@0.25.3'); }
+  catch(e){ return await import('https://esm.sh/trystero@0.25.3'); }
+}
+function genCode(){
+  const r = mulberry32(Date.now());
+  const animal = ANIMALS[Math.floor(r()*ANIMALS.length)];
+  const num = 10 + Math.floor(r()*90);
+  return animal + '-' + num;
+}
+function shareLink(code){
+  return location.origin + location.pathname + '#room/' + code;
+}
+function updateWaitingRoom(){
+  const opp = $('state1');
+  opp.textContent = net.opponent ? 'CONNECTED \u2713' : 'WAITING\u2026';
+  opp.className = 'pstate' + (net.opponent ? ' ok' : '');
+  const isHost = !!net.opponent && myIndex === 0;
+  $('startBtn').style.display = isHost ? '' : 'none';
+  $('startBtn').disabled = net.started;
+}
+
+async function initNet(code){
+  if(net.room) return;
+  const hostFlag = !code;
+  myIndex = hostFlag ? 0 : 1;
+  code = (code || genCode()).toLowerCase();
+  net.code = code;
+  net.isHost = hostFlag;
+  $('roomCode').textContent = code;
+  $('netLink').textContent = shareLink(code);
+  $('netStatus').textContent = 'Connecting…';
+  net.started = false;
+  updateWaitingRoom();
+  try{
+    const {joinRoom} = await loadTrystero();
+    const room = joinRoom({appId:'lunar-lander-browser-v1'}, code);
+    net.room = room;
+    net.initAct = room.makeAction('init');
+    net.stateAct = room.makeAction('state');
+    net.finishAct = room.makeAction('finish');
+    net.ackAct = room.makeAction('ack');
+    net.sendInit = (d)=>net.initAct.send(d);
+    net.sendState = (d)=>net.stateAct.send(d);
+    net.sendFinish = (d)=>net.finishAct.send(d);
+    net.sendAck = (k)=>net.ackAct.send({kind:k});
+    $('netStatus').textContent = 'Waiting for opponent — share the link above';
+    room.onPeerJoin = (id)=>{
+      if(net.opponent) return;
+      net.opponent = id;
+      updateWaitingRoom();
+      $('netStatus').textContent = myIndex===0
+        ? 'Opponent connected! Press START RACE.'
+        : 'Opponent connected! Waiting for them to start…';
+    };
+    net.initAct.onMessage = ({seed: s})=>{
+      net.started = true;
+      if(mode !== 'net' || phase === 'done') startGame('net', s);
+      net.sendAck('init');
+    };
+    net.ackAct.onMessage = ({kind})=>{
+      if(kind === 'init' && net.retryTimer){ clearTimeout(net.retryTimer); net.retryTimer = null; }
+      if(kind === 'finish' && net.finishTimer){ clearTimeout(net.finishTimer); net.finishTimer = null; }
+    };
+    net.stateAct.onMessage = (d)=>{
+      net.rival = d;
+      const r = $('rivalTag');
+      const mi = Math.floor(d.A), ft = Math.floor(5280*(d.A-mi));
+      r.textContent = 'OPPONENT \u00B7 ' + mi + ' MI +' + ft + ' FT \u00B7 ' + Math.round(3600*d.V).toLocaleString('en-US') + ' MPH \u00B7 ' + Math.round(d.M-d.N).toLocaleString('en-US') + ' LB \u00B7 ' + (d.phase==='done' ? 'LANDED' : 'DESCENDING');
+    };
+    net.finishAct.onMessage = (d)=>{
+      net.rivalDone = d;
+      if(phase === 'done' && net.myDone) net.resolve();
+      else if(phase === 'done'){
+        setMsg('OPPONENT ' + (d.quality==='CRASH' ? 'CRASHED' : 'LANDED') + ' — ' + d.score.toLocaleString('en-US') + ' PTS. ' + (myIndex===0 ? 'REMATCH READY.' : 'WAITING FOR HOST\u2026'));
+      }
+      net.sendAck('finish');
+    };
+    room.onPeerLeave = (id)=>{
+      if(id !== net.opponent) return;
+      net.opponent = null;
+      net.started = false;
+      if(net.retryTimer){ clearTimeout(net.retryTimer); net.retryTimer = null; }
+      if(net.finishTimer){ clearTimeout(net.finishTimer); net.finishTimer = null; }
+      if(net.stateTimer){ clearInterval(net.stateTimer); net.stateTimer = null; }
+      if(mode === 'net' && phase !== 'done') setMsg('\u26A0 OPPONENT DISCONNECTED — FLIGHT CONTINUES');
+      $('netStatus').textContent = 'Opponent left. Share the link to invite someone else.';
+      updateWaitingRoom();
+      $('rivalTag').textContent = '';
+      showMenu(true);
+    };
+  }catch(e){
+    $('netStatus').textContent = 'Failed to load networking (offline?). Try another mode.';
+    console.error('net init failed:', e);
+  }
+}
+
+function joinRoom(code){
+  code = (code || '').trim().toLowerCase();
+  if(!/^[a-z]+-\d{1,3}$/.test(code)){
+    $('netStatus').textContent = 'Enter a room code like "koala-42" (animal-number).';
+    return false;
+  }
+  if(net.room){
+    net.room.leave();
+    net.room = null; net.opponent = null;
+    net.initAct = null; net.stateAct = null; net.finishAct = null; net.ackAct = null;
+    net.sendInit = null; net.sendState = null; net.sendFinish = null; net.sendAck = null;
+    net.started = false;
+    if(net.retryTimer){ clearTimeout(net.retryTimer); net.retryTimer = null; }
+    if(net.finishTimer){ clearTimeout(net.finishTimer); net.finishTimer = null; }
+    if(net.stateTimer){ clearInterval(net.stateTimer); net.stateTimer = null; }
+  }
+  $('joinCode').value = code;
+  initNet(code);
+  return true;
+}
+$('joinBtn').onclick = ()=> joinRoom($('joinCode').value);
+$('joinCode').addEventListener('keydown', e=>{
+  e.stopPropagation();
+  if(e.key === 'Enter'){ e.preventDefault(); joinRoom($('joinCode').value); }
+});
+$('startBtn').onclick = ()=>{
+  if(!net.opponent || myIndex !== 0 || net.started) return;
+  net.started = true;
+  $('startBtn').disabled = true;
+  startGame('net', ((Math.random()*2**31)|0));
+  let tries = 0;
+  (function sendInit(){
+    if(!net.opponent) return;
+    net.sendInit({seed});
+    if(++tries < 60) net.retryTimer = setTimeout(sendInit, 600);
+  })();
+};
+$('copyBtn').onclick = ()=>{
+  if(navigator.clipboard) navigator.clipboard.writeText(shareLink($('roomCode').textContent.trim()));
+  $('copyBtn').textContent = 'COPIED!';
+  setTimeout(()=> $('copyBtn').textContent = 'COPY LINK', 1200);
+};
+
+// telemetry during net flights
+function startTelemetry(){
+  if(net.stateTimer) clearInterval(net.stateTimer);
+  net.stateTimer = setInterval(()=>{
+    if(mode === 'net' && net.opponent && phase !== 'done'){
+      net.sendState({A, V, M, N: N0, L, K, phase});
+    }
+  }, 200);
+}
+const _startGame = startGame;
+startGame = function(m, s){
+  _startGame(m, s);
+  if(m === 'net'){
+    net.resetRival();
+    startTelemetry();
+  } else if(net.stateTimer){ clearInterval(net.stateTimer); net.stateTimer = null; }
+};
+
+// ============================================================
+//  BOOT
+// ============================================================
+function resizeCanvas(){
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(innerWidth * dpr);
+  cv.height = Math.round(innerHeight * dpr);
+}
+addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+$('titleArt').textContent = [
+'                _.._',
+"             .-'    '-.",
+'            /  ,___,   \\',
+'           |   |o  o|   |',
+'           |    \\__/    |',
+"            \\          /",
+"             '._    _.'",
+'                \\__/',
+'          ___ ___ ___ ___',
+'         / LUNAR LANDER \\',
+].join('\n');
+
+menu.build();
+paintBest();
+
+// toggle sound
+$('muteBtn').onclick = ()=>{
+  AU.sfxOn = !AU.sfxOn;
+  if(AU.sfxOn) AU.startMusic(); else { AU.stopMusic(); AU.thrustOff(); }
+  $('muteBtn').textContent = AU.sfxOn ? 'SND ON' : 'SND OFF';
+};
+
+// start music on first menu interaction (autoplay policy)
+let musicStarted = false;
+function armMusic(){
+  if(musicStarted) return;
+  musicStarted = true;
+  if(AU.sfxOn) AU.startMusic();
+}
+$('menu').addEventListener('pointerdown', armMusic, {once:true});
+$('menu').addEventListener('keydown', armMusic, {once:true});
+document.addEventListener('pointerdown', ()=> AU.resume(), {once:true});
+document.addEventListener('keydown', ()=> AU.resume(), {once:true});
+
+// debug/test hook
+window.__lunar = ()=>({phase, mode, A, V, M, N: N0, L, T, K, fuelOut, turn, result, myIndex, score, pace});
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

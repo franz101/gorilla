@@ -24,6 +24,7 @@ jobs:
           mkdir -p _site
           cp index.html _site/
           cp gorillas.bas _site/
+          cp -r lander _site/lander
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

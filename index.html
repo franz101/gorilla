@@ -214,13 +214,17 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
         <button id="soundBtn" class="ghost">SOUND: ON</button>
         <button id="scanBtn" class="ghost">SCANLINES: OFF</button>
       </div>
+      <div class="row">
+        <button id="crossBtn" class="ghost">CROSSHAIR: OFF</button>
+      </div>
       <div class="row"><button id="backSettings" class="ghost">BACK</button></div>
-      <div class="hint">Gravity affects the banana's fall. Adjust with the buttons or arrow keys (up/down). Earth = 9.8.</div>
+      <div class="hint">Gravity affects the banana's fall. Adjust with the buttons or arrow keys (up/down). Earth = 9.8. Crosshair shows a predicted trajectory preview for your current angle/velocity — helps on mobile.</div>
     </div>
 
     <div class="foot">
       <kbd>&#8593;</kbd><kbd>&#8595;</kbd> select &nbsp; <kbd>ENTER</kbd> choose &nbsp; <kbd>ESC</kbd> back / menu<br>
-      IN-GAME: <kbd>&#8592;</kbd><kbd>&#8594;</kbd> angle &nbsp; <kbd>&#8593;</kbd><kbd>&#8595;</kbd> velocity &nbsp; <kbd>ENTER</kbd> fire
+      IN-GAME: <kbd>&#8592;</kbd><kbd>&#8594;</kbd> angle &nbsp; <kbd>&#8593;</kbd><kbd>&#8595;</kbd> velocity &nbsp; <kbd>ENTER</kbd> fire<br>
+      <a href="./lander/">LUNAR LANDER &#9658; sibling game</a>
     </div>
   </div>
 </div>
@@ -506,12 +510,13 @@ resizeCanvas();
 
 let gravity = 9.8;                       // original default (Earth = 9.8 m/s²)
 let scanlines = false;                    // CRT effect, off by default
+let crosshair = false;                    // optional trajectory preview + crosshair
 let mode = null, rng = null, buildings = null, top = null, gorillas = null;
 let wind = 0, turn = 0, roundStarter = 0, scores = [0,0], roundNum = 0;
 let phase = 'menu';                     // menu | aim | flying | boom | over
 let shot = null, shotOwner = 0, spin = 0, boom = null, winner = -1;
 let myIndex = 0, names = ['PLAYER 1','PLAYER 2'];
-let net = {room:null, opponent:null, initAct:null, shotAct:null, ackAct:null, sendInit:null, sendShot:null, sendAck:null, started:false, retryTimer:null};
+let net = {room:null, code:null, isHost:false, opponent:null, initAct:null, shotAct:null, ackAct:null, sendInit:null, sendShot:null, sendAck:null, started:false, retryTimer:null};
 let acc = 0, lastTs = 0;
 let danceT = 0;
 
@@ -720,6 +725,53 @@ function drawGorilla(i, ts){
   ctx.restore();
 }
 
+function drawCrosshairPreview(){
+  if(!crosshair || phase!=='aim' || !gorillas) return;
+  const human = mode==='hot' || (mode==='bot' && turn===0) || (mode==='net' && turn===myIndex);
+  if(!human) return;
+  const ang = +$('angN').value, vel = +$('velN').value;
+  if(isNaN(ang) || isNaN(vel)) return;
+  const f = facingOf(turn);
+  const lp = launchPos(gorillas[turn], f);
+  const s = makeShot(lp.x, lp.y, ang, vel, f, wind, gravity);
+  const pts = [];
+  pts.push({x:s.x, y:s.y});
+  let hit = null;
+  for(let i=0;i<900;i++){
+    stepShot(s, 0.04);
+    pts.push({x:s.x, y:s.y});
+    const c = collide(s.x, s.y, top, gorillas);
+    if(c){ hit = {x:s.x, y:s.y, type:c.type}; break; }
+    if(s.y > GROUND+12) { hit = {x:s.x, y:s.y, type:'ground'}; break; }
+    if(s.x < -60 || s.x > WORLD_W+60) break;
+  }
+  if(pts.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,85,0.55)';
+  ctx.lineWidth = 1.6;
+  ctx.setLineDash([7,7]);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if(hit){
+    ctx.strokeStyle = hit.type==='gorilla' ? '#33ff66' : '#FFFF55';
+    ctx.lineWidth = 1.8;
+    const cx = hit.x, cy = hit.y;
+    ctx.beginPath();
+    ctx.moveTo(cx-14, cy); ctx.lineTo(cx+14, cy);
+    ctx.moveTo(cx, cy-14); ctx.lineTo(cx, cy+14);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI*2); ctx.stroke();
+    // inner dot
+    ctx.fillStyle = hit.type==='gorilla' ? '#33ff66' : '#FFFF55';
+    ctx.beginPath(); ctx.arc(cx, cy, 2.2, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function draw(ts){
   // camera: fit BOTH gorillas AND the world height, so they're always in view
   // on any aspect ratio (portrait phones and wide desktops alike).
@@ -743,6 +795,7 @@ function draw(ts){
   drawGround();
   drawBuildings();
   gorillas.forEach((g,i)=>drawGorilla(i,ts));
+  drawCrosshairPreview();
   if(phase==='aim'){
     const g = gorillas[turn], b = Math.sin(ts/200)*4;
     ctx.fillStyle = '#FFFF55';
@@ -980,15 +1033,21 @@ function updateWaitingRoom(){
 }
 async function initNet(code){
   if(net.room) return;
+  const hostFlag = !code; // true = we created the room (host), false = we joined someone else's code
+  // deterministic host: creator is myIndex 0, joiner is 1 — fixes 50% START-button confusion (selfId-race)
+  myIndex = hostFlag ? 0 : 1;
+  // force names to match the new role immediately (waiting room shows YOU vs OPPONENT)
+  if(mode !== 'net') names = myIndex===0 ? ['YOU','OPPONENT'] : ['OPPONENT','YOU'];
   code = (code || genCode()).toLowerCase();
   net.code = code;
+  net.isHost = hostFlag;
   $('roomCode').textContent = code;
   $('netLink').textContent = shareLink(code);
   $('netStatus').textContent = 'Connecting…';
   net.started = false;
   updateWaitingRoom();
   try{
-    const {joinRoom, selfId} = await loadTrystero();
+    const {joinRoom} = await loadTrystero();
     const room = joinRoom({appId:'gorillas-bas-browser-v2'}, code);
     net.room = room;
     net.initAct = room.makeAction('init');
@@ -1001,7 +1060,7 @@ async function initNet(code){
     room.onPeerJoin = (id)=>{
       if(net.opponent) return;
       net.opponent = id;
-      myIndex = selfId < id ? 0 : 1;
+      // keep deterministic myIndex (hostFlag) — do not re-elect via selfId, so START reliably belongs to the host
       updateWaitingRoom();
       $('netStatus').textContent = myIndex===0
         ? 'Opponent connected! Press START GAME.'
@@ -1089,6 +1148,7 @@ function paintSettings(){
   $('gravVal').textContent = gravity + ' m/s\u00B2';
   $('soundBtn').textContent = 'SOUND: ' + (A.sfxOn ? 'ON' : 'OFF');
   $('scanBtn').textContent = 'SCANLINES: ' + (scanlines ? 'ON' : 'OFF');
+  $('crossBtn').textContent = 'CROSSHAIR: ' + (crosshair ? 'ON' : 'OFF');
 }
 function toggleSound(){
   A.sfxOn = !A.sfxOn;
@@ -1101,10 +1161,16 @@ function toggleScanlines(){
   document.body.classList.toggle('scanlines', scanlines);
   paintSettings();
 }
+function toggleCrosshair(){
+  crosshair = !crosshair;
+  try{ localStorage.setItem('gorillas.crosshair', crosshair ? '1' : '0'); }catch(e){}
+  paintSettings();
+}
 $('gravDown').onclick = ()=> setGravity(gravity - 1);
 $('gravUp').onclick = ()=> setGravity(gravity + 1);
 $('soundBtn').onclick = toggleSound;
 $('scanBtn').onclick = toggleScanlines;
+$('crossBtn').onclick = toggleCrosshair;
 document.addEventListener('keydown', e=>{
   if($('menu').style.display === 'none') return;
   if(menu.panel !== 'settings') return;
@@ -1115,6 +1181,7 @@ document.addEventListener('keydown', e=>{
 // ============================================================
 //  BOOT
 // ============================================================
+try{ crosshair = localStorage.getItem('gorillas.crosshair')==='1'; }catch(e){}
 $('titleArt').textContent = TITLE_ART;
 menu.build();
 updateHUD();
