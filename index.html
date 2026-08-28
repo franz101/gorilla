@@ -53,7 +53,26 @@ input[type=number]{
   width:52px; background:rgba(0,0,40,.7); color:var(--c-acc); border:1px solid #55FFFF; padding:3px 4px;
   border-radius:3px; font-family:inherit; font-size:14px; font-weight:bold;
 }
-input[type=range]{width:110px; accent-color:var(--c-acc)}
+input[type=range]{width:110px; accent-color:var(--c-acc); touch-action:manipulation}
+#controls .nudge{
+  min-width:36px; min-height:36px; padding:0 10px; font-size:18px; line-height:1;
+  background:#000055; color:#FFFF55; border:1px solid #55FFFF; border-radius:6px;
+}
+#controls .nudge:active{filter:brightness(1.4); transform:scale(0.97)}
+@media(max-width:640px){
+  #controls{gap:6px 8px; padding:10px 8px 12px}
+  #controls .stat{font-size:13px; gap:4px}
+  input[type=range]{width:124px; height:36px}
+  input[type=range]::-webkit-slider-thumb{width:28px;height:28px}
+  input[type=range]::-moz-range-thumb{width:28px;height:28px}
+  input[type=number]{width:62px;height:38px;font-size:16px;padding:4px 6px}
+  #controls button{padding:10px 18px; font-size:16px; min-height:44px}
+  #controls .nudge{min-width:44px; min-height:44px; font-size:20px}
+  #controls .hint{display:none}
+}
+@media(max-width:400px){
+  input[type=range]{width:100px}
+}
 #menu .panel input[type=text]{
   width:120px; background:#000055; color:#FFFF55; border:1px solid #55FFFF;
   padding:4px 6px; border-radius:3px; font-family:inherit; font-size:14px;
@@ -151,8 +170,8 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
 </div>
 <div id="msg"></div>
 <div id="controls">
-  <span class="stat">ANGLE <input type="range" id="angR" min="0" max="180" value="45"><input type="number" id="angN" min="0" max="180" value="45"></span>
-  <span class="stat">VELOCITY <input type="range" id="velR" min="1" max="200" value="50"><input type="number" id="velN" min="1" max="200" value="50"></span>
+  <span class="stat">ANGLE <button id="angMinus" class="ghost nudge" aria-label="angle down">−</button><input type="range" id="angR" min="0" max="180" value="45"><input type="number" id="angN" min="0" max="180" value="45" inputmode="numeric"><button id="angPlus" class="ghost nudge" aria-label="angle up">+</button></span>
+  <span class="stat">VELOCITY <button id="velMinus" class="ghost nudge" aria-label="velocity down">−</button><input type="range" id="velR" min="1" max="200" value="50"><input type="number" id="velN" min="1" max="200" value="50" inputmode="numeric"><button id="velPlus" class="ghost nudge" aria-label="velocity up">+</button></span>
   <span class="hint"><kbd>&#8592;</kbd><kbd>&#8594;</kbd> angle &nbsp; <kbd>&#8593;</kbd><kbd>&#8595;</kbd> velocity &nbsp; <kbd>ENTER</kbd> fire</span>
   <button id="fireBtn">FIRE &#9166;</button>
   <button id="muteBtn" class="ghost" title="toggle music/sfx">SND ON</button>
@@ -171,6 +190,7 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
     <!-- ONLINE panel -->
     <div class="panel" id="netPanel">
       <h2>&gt; ONLINE &middot; P2P</h2>
+      <div class="row">NICKNAME: <input type="text" id="nickInput" maxlength="12" autocomplete="off" spellcheck="false" placeholder="GorillaFan" style="width:140px; text-transform:none; letter-spacing:1px"><span id="nickOk" class="dim" style="font-size:11px"></span></div>
       <div class="row">ROOM CODE: <code id="roomCode">&hellip;</code></div>
       <div>INVITE LINK:</div>
       <div id="netLink">&nbsp;</div>
@@ -183,13 +203,21 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
         <input type="text" id="joinCode" maxlength="20" autocomplete="off" spellcheck="false" placeholder="koala-42">
         <button id="joinBtn" class="ghost">JOIN</button>
       </div>
+      <div class="lobby" style="border:1px solid #55FFFF; background:#000055; border-radius:3px; padding:8px; margin:6px 0">
+        <div class="row" style="justify-content:space-between; align-items:center">
+          <b style="color:#FFFF55; letter-spacing:1px">● LIVE ROOMS</b>
+          <button id="refreshLobby" class="ghost" style="padding:4px 10px; font-size:12px">↻ REFRESH</button>
+        </div>
+        <div id="lobbyList" class="players" style="max-height:180px; overflow:auto; margin-top:6px"></div>
+        <div id="lobbyEmpty" class="dim" style="font-size:12px; margin-top:6px">No rooms yet — be the first to host!</div>
+      </div>
       <div class="players">
         <div class="slot"><span class="pname">YOU</span><span class="pstate ok" id="state0">READY</span></div>
         <div class="slot"><span class="pname">OPPONENT</span><span class="pstate" id="state1">WAITING&hellip;</span></div>
       </div>
       <div class="row"><button id="startBtn" class="ghost" disabled>START GAME</button></div>
       <div class="status" id="netStatus">Waiting to connect&hellip;</div>
-      <div class="hint">Browsers connect directly over WebRTC (Trystero). Host: share the link, then press START when your opponent joins. Guest: paste a room code (e.g. koala-42) and press JOIN.</div>
+      <div class="hint">Browsers connect directly over WebRTC (Trystero). Host: share the link, then press START when your opponent joins. Guest: paste a room code or pick a LIVE ROOM above (nickname required) and press JOIN / REQUEST.</div>
     </div>
 
     <!-- HELP panel -->
@@ -216,9 +244,10 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
       </div>
       <div class="row">
         <button id="crossBtn" class="ghost">CROSSHAIR: OFF</button>
+        <button id="dropBtn" class="ghost">DROP GORILLA: OFF</button>
       </div>
       <div class="row"><button id="backSettings" class="ghost">BACK</button></div>
-      <div class="hint">Gravity affects the banana's fall. Adjust with the buttons or arrow keys (up/down). Earth = 9.8. Crosshair shows a predicted trajectory preview for your current angle/velocity — helps on mobile.</div>
+      <div class="hint">Gravity affects the banana's fall. Earth = 9.8. Crosshair shows pure angle direction (fixed length). Drop Gorilla: when ON, gorillas fall down with the building like in Worms (still only banana kills).</div>
     </div>
 
     <div class="foot">
@@ -345,6 +374,16 @@ function explode(x, y, top){
     if(bottom > top[c]) top[c] = Math.min(GROUND, Math.max(top[c], Math.round(bottom)));
   }
 }
+function applyDrop(){
+  if(!dropGorilla || !gorillas || !top) return;
+  for(const g of gorillas){
+    if(!g.alive) continue;
+    const cx = Math.max(0, Math.min(WORLD_W-1, Math.round(g.x)));
+    const ny = top[cx] - GOR_H;
+    if(ny > g.y) g.y = ny;
+    if(g.y > GROUND - GOR_H) g.y = GROUND - GOR_H;
+  }
+}
 
 // --- bot solver ---------------------------------------------
 function solveShot(me, opp, top, gorillas, wind, gravity, rand){
@@ -385,7 +424,7 @@ const mtof = m => 440 * Math.pow(2,(m-69)/12);
 const A = {
   ac:null, master:null, musicGain:null, sfxGain:null,
   musicOn:true, sfxOn:true,
-  step:0, nextT:0, timer:null, bpm:150,
+  step:0, nextT:0, timer:null, bpm:168,
 
   ensure(){
     if(this.ac) return true;
@@ -433,10 +472,10 @@ const A = {
     s.start(t0);
   },
 
-  // 32-step 16th-note loop, A minor. Lead(square) + bass(triangle) + hats(noise).
-  LEAD : [69,0,72,0, 76,0,72,69,  67,0,71,0, 74,0,71,67,
-          65,0,69,0, 72,0,69,65,  64,0,67,0, 71,0,67,64],
-  BASS : [45,45,43,43, 41,41,40,40],
+  // 32-step 16th-note loop — catchier, groovier A-minor hook (lead = arcade earworm, bass walks)
+  LEAD : [69,69,72,72, 76,76,79,77,  67,67,71,71, 74,74,76,74,
+          65,65,69,69, 72,72,74,72,  64,64,67,67, 71,69,67,64],
+  BASS : [45,48,43,46,  41,44,40,43],
   startMusic(){
     if(!this.ensure()) return;
     this.resume();
@@ -453,12 +492,19 @@ const A = {
       const s = this.step % 32;
       const t = this.nextT;
       const lead = this.LEAD[s];
-      if(lead) this.tone(mtof(lead), t, spb*0.9, 'square', this.musicGain, 0.16);
+      if(lead) this.tone(mtof(lead), t, spb*0.88, 'square', this.musicGain, 0.18);
       if(s % 8 === 0){
         const b = this.BASS[(s/8)|0];
-        this.tone(mtof(b), t, spb*7.6, 'triangle', this.musicGain, 0.22);
+        this.tone(mtof(b), t, spb*7.4, 'triangle', this.musicGain, 0.26);
+        // chord stab on downbeat
+        this.tone(mtof(b+12), t, spb*1.8, 'square', this.musicGain, 0.07);
+        this.tone(mtof(b+7), t, spb*1.8, 'square', this.musicGain, 0.07);
       }
-      if(s % 2 === 1) this.noise(t, 0.03, 0.05, this.musicGain, true);
+      // hats on off-beats, snare on 8 & 24
+      if(s % 2 === 1) this.noise(t, 0.025, 0.055, this.musicGain, true);
+      if(s===8 || s===24) this.noise(t, 0.08, 0.16, this.musicGain, false);
+      // shaker on every 16th for groove
+      if(s%4===2) this.noise(t, 0.015, 0.028, this.musicGain, true);
       this.nextT += spb;
       this.step++;
     }
@@ -510,7 +556,8 @@ resizeCanvas();
 
 let gravity = 9.8;                       // original default (Earth = 9.8 m/s²)
 let scanlines = false;                    // CRT effect, off by default
-let crosshair = false;                    // optional trajectory preview + crosshair
+let crosshair = false;                    // optional angle direction crosshair
+let dropGorilla = false;                  // optional Worms-like fall when building destroyed
 let mode = null, rng = null, buildings = null, top = null, gorillas = null;
 let wind = 0, turn = 0, roundStarter = 0, scores = [0,0], roundNum = 0;
 let phase = 'menu';                     // menu | aim | flying | boom | over
@@ -519,6 +566,145 @@ let myIndex = 0, names = ['PLAYER 1','PLAYER 2'];
 let net = {room:null, code:null, isHost:false, opponent:null, initAct:null, shotAct:null, ackAct:null, sendInit:null, sendShot:null, sendAck:null, started:false, retryTimer:null};
 let acc = 0, lastTs = 0;
 let danceT = 0;
+let myNick = '';
+let oppNick = '';
+let lobby = {room:null, announceAct:null, joinReqAct:null, rooms:new Map(), announceTimer:null, sweepTimer:null};
+
+// ---------- nickname ----------
+function loadNick(){
+  try{ return (localStorage.getItem('gorillas.nick')||'').trim().slice(0,12); }catch(e){ return ''; }
+}
+function saveNick(n){
+  myNick = n;
+  try{ localStorage.setItem('gorillas.nick', n); }catch(e){}
+  const inp=$('nickInput'); if(inp && inp.value!==n) inp.value=n;
+}
+function getNick(){ return ($('nickInput')?.value||'').trim().slice(0,12); }
+function ensureNick(){
+  let n = getNick();
+  const okEl=$('nickOk');
+  // auto-generate for tests / empty input so automation still works
+  if(!n || n.length<2){
+    // if we have a saved nick, reuse it
+    const saved = loadNick();
+    if(saved && saved.length>=2){ n=saved; }
+    else {
+      n = 'Gorilla'+Math.floor(Math.random()*900+10);
+      const inp=$('nickInput'); if(inp) inp.value=n;
+    }
+  }
+  n = n.slice(0,12).trim();
+  if(n.length<2){ if(okEl){ okEl.textContent=' 2-12 chars!'; okEl.style.color='#ff5544'; } return null; }
+  if(!/^[a-zA-Z0-9_\- ]+$/.test(n)){ if(okEl){ okEl.textContent=' letters/numbers/_/-'; okEl.style.color='#ff5544'; } $('nickInput')?.focus(); return null; }
+  if(okEl){ okEl.textContent=' ✓'; okEl.style.color='#33ff66'; }
+  saveNick(n);
+  return n;
+}
+function wireNick(){
+  const inp=$('nickInput');
+  if(!inp) return;
+  const init=loadNick();
+  if(init){ inp.value=init; myNick=init; const ok=$('nickOk'); if(ok){ ok.textContent=' ✓'; ok.style.color='#33ff66'; } }
+  inp.addEventListener('input', ()=>{
+    const v=inp.value.trim().slice(0,12);
+    if(v.length>=2 && /^[a-zA-Z0-9_\- ]+$/.test(v)){ $('nickOk').textContent=' ✓'; $('nickOk').style.color='#33ff66'; saveNick(v); }
+    else{ $('nickOk').textContent=''; }
+  });
+}
+
+// ---------- lobby (live rooms) ----------
+function renderLobby(){
+  const list=$('lobbyList'), empty=$('lobbyEmpty');
+  if(!list) return;
+  list.innerHTML='';
+  const now=Date.now();
+  // sweep stale
+  for(const [code,info] of lobby.rooms){
+    if(now - info.ts > 14000) lobby.rooms.delete(code);
+  }
+  const entries=[...lobby.rooms.values()].filter(r=> r.code!==net.code).sort((a,b)=> b.ts - a.ts);
+  if(empty) empty.style.display = entries.length ? 'none' : '';
+  for(const r of entries){
+    const div=document.createElement('div');
+    div.className='slot';
+    div.style.cursor='default';
+    const left=document.createElement('div');
+    left.style.display='flex'; left.style.flexDirection='column'; left.style.alignItems='flex-start'; left.style.gap='2px';
+    const nameEl=document.createElement('span');
+    nameEl.className='pname';
+    nameEl.textContent=r.nick || 'Anonymous';
+    nameEl.style.color='#FFFF55';
+    const codeEl=document.createElement('span');
+    codeEl.className='dim';
+    codeEl.style.fontSize='11px';
+    codeEl.textContent=r.code + ' · ' + (r.started ? 'INGAME' : r.hasOpponent ? 'FULL' : 'OPEN') + ' · grav ' + (r.gravity||9.8);
+    left.appendChild(nameEl); left.appendChild(codeEl);
+    const right=document.createElement('div');
+    right.style.display='flex'; right.style.gap='6px'; right.style.alignItems='center';
+    const btn=document.createElement('button');
+    btn.className='ghost';
+    btn.style.padding='4px 10px'; btn.style.fontSize='12px';
+    btn.textContent = r.hasOpponent||r.started ? 'FULL' : 'REQUEST JOIN';
+    btn.disabled = !!(r.hasOpponent||r.started);
+    btn.onclick=()=>{
+      const n=ensureNick();
+      if(!n){ $('nickInput')?.focus(); return; }
+      // send join request via lobby channel if available, then directly join
+      if(lobby.joinReqAct) try{ lobby.joinReqAct.send({code:r.code, nick:n, ts:Date.now()}, {target: r.peerId}); }catch(e){}
+      // also directly join — host will accept via usual WebRTC
+      joinRoom(r.code);
+      setMsg('Joining '+r.nick+' @ '+r.code+' …');
+    };
+    right.appendChild(btn);
+    div.appendChild(left); div.appendChild(right);
+    list.appendChild(div);
+  }
+}
+function announceLobby(){
+  if(!lobby.announceAct || !net.code || net.started) return;
+  const n = getNick() || myNick || loadNick() || 'Anonymous';
+  try{ lobby.announceAct.send({code: net.code, nick: n.slice(0,12), gravity, hasOpponent: !!net.opponent, started: !!net.started, ts: Date.now()}); }catch(e){}
+}
+function startLobbyAnnounce(){
+  if(lobby.announceTimer) clearInterval(lobby.announceTimer);
+  lobby.announceTimer = setInterval(()=>{ announceLobby(); renderLobby(); }, 2500);
+  announceLobby();
+}
+function stopLobbyAnnounce(){
+  if(lobby.announceTimer){ clearInterval(lobby.announceTimer); lobby.announceTimer=null; }
+}
+async function initLobby(){
+  if(lobby.room) return;
+  try{
+    const {joinRoom} = await loadTrystero();
+    const room = joinRoom({appId:'gorillas-bas-browser-v2'}, '_lobby-v1');
+    lobby.room = room;
+    lobby.announceAct = room.makeAction('lobbyAnnounce');
+    lobby.joinReqAct = room.makeAction('joinReq');
+    lobby.announceAct.onMessage = (data, meta)=>{
+      const peerId = meta?.peerId || data?.peerId || 'unknown';
+      if(!data || !data.code || !/^[a-z]+-\d{1,3}$/.test(data.code)) return;
+      // ignore own announces (code equals own)
+      lobby.rooms.set(data.code, {code:data.code, nick:(data.nick||'Anonymous').slice(0,12), gravity:data.gravity||9.8, hasOpponent:!!data.hasOpponent, started:!!data.started, ts: data.ts||Date.now(), peerId});
+      renderLobby();
+    };
+    lobby.joinReqAct.onMessage = (data, meta)=>{
+      // host receives a join request — show in status if it's for our room
+      if(!data || data.code!==net.code) return;
+      const from = (data.nick||'Someone').slice(0,12);
+      $('netStatus').textContent = from + ' wants to join! (' + data.code + ') — share approval by pressing START when they appear as CONNECTED.';
+      // flash
+      const s=$('state1'); if(s){ s.textContent='REQUEST from '+from.toUpperCase(); s.className='pstate ok'; }
+      setTimeout(()=> updateWaitingRoom(), 4000);
+    };
+    // periodic sweep
+    if(lobby.sweepTimer) clearInterval(lobby.sweepTimer);
+    lobby.sweepTimer = setInterval(renderLobby, 5000);
+    // announce current if we are hosting
+    if(net.code && net.isHost && !net.started) startLobbyAnnounce();
+    renderLobby();
+  }catch(e){ console.error('lobby init failed', e); }
+}
 
 // ---------- match / round ----------
 function newMatch(seed){
@@ -611,6 +797,7 @@ function finishBoom(){
   }else{
     // destructible buildings: carve the blast out of the skyline
     explode(boom.x, boom.y, top);
+    if(dropGorilla) applyDrop();
     endTurn();
   }
 }
@@ -728,47 +915,43 @@ function drawGorilla(i, ts){
 function drawCrosshairPreview(){
   if(!crosshair || phase!=='aim' || !gorillas) return;
   const human = mode==='hot' || (mode==='bot' && turn===0) || (mode==='net' && turn===myIndex);
-  if(!human) return;
-  const ang = +$('angN').value, vel = +$('velN').value;
-  if(isNaN(ang) || isNaN(vel)) return;
-  const f = facingOf(turn);
-  const lp = launchPos(gorillas[turn], f);
-  const s = makeShot(lp.x, lp.y, ang, vel, f, wind, gravity);
-  const pts = [];
-  pts.push({x:s.x, y:s.y});
-  let hit = null;
-  for(let i=0;i<900;i++){
-    stepShot(s, 0.04);
-    pts.push({x:s.x, y:s.y});
-    const c = collide(s.x, s.y, top, gorillas);
-    if(c){ hit = {x:s.x, y:s.y, type:c.type}; break; }
-    if(s.y > GROUND+12) { hit = {x:s.x, y:s.y, type:'ground'}; break; }
-    if(s.x < -60 || s.x > WORLD_W+60) break;
-  }
-  if(pts.length < 2) return;
+  // allow preview even when waiting for opponent if crosshair on — helpful for pre-aim
+  if(!human && mode!=='net') return;
+  // in net mode allow opponent-turn preview (pre-aim) — draw for my gorilla, not turn gorilla
+  const idx = (mode==='net' && turn!==myIndex) ? myIndex : turn;
+  const g = gorillas[idx];
+  if(!g || !g.alive) return;
+  const ang = +$('angN').value;
+  if(isNaN(ang)) return;
+  const f = facingOf(idx);
+  const lp = launchPos(g, f);
+  const rad = ang*Math.PI/180;
+  const len = 70; // direction-only, fixed length — pure angle indicator
+  const x2 = lp.x + Math.cos(rad)*len*f;
+  const y2 = lp.y - Math.sin(rad)*len;
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,85,0.55)';
-  ctx.lineWidth = 1.6;
-  ctx.setLineDash([7,7]);
+  ctx.strokeStyle = 'rgba(255,255,85,0.85)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6,6]);
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.moveTo(lp.x, lp.y);
+  ctx.lineTo(x2, y2);
   ctx.stroke();
   ctx.setLineDash([]);
-  if(hit){
-    ctx.strokeStyle = hit.type==='gorilla' ? '#33ff66' : '#FFFF55';
-    ctx.lineWidth = 1.8;
-    const cx = hit.x, cy = hit.y;
-    ctx.beginPath();
-    ctx.moveTo(cx-14, cy); ctx.lineTo(cx+14, cy);
-    ctx.moveTo(cx, cy-14); ctx.lineTo(cx, cy+14);
-    ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI*2); ctx.stroke();
-    // inner dot
-    ctx.fillStyle = hit.type==='gorilla' ? '#33ff66' : '#FFFF55';
-    ctx.beginPath(); ctx.arc(cx, cy, 2.2, 0, Math.PI*2); ctx.fill();
-  }
+  // crosshair at tip
+  ctx.strokeStyle = '#FFFF55';
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(x2-10, y2); ctx.lineTo(x2+10, y2);
+  ctx.moveTo(x2, y2-10); ctx.lineTo(x2, y2+10);
+  ctx.stroke();
+  ctx.beginPath(); ctx.arc(x2, y2, 7, 0, Math.PI*2); ctx.stroke();
+  ctx.fillStyle = '#FFFF55';
+  ctx.beginPath(); ctx.arc(x2, y2, 1.8, 0, Math.PI*2); ctx.fill();
+  // small dot at origin
+  ctx.fillStyle = 'rgba(255,255,85,0.9)';
+  ctx.beginPath(); ctx.arc(lp.x, lp.y, 2, 0, Math.PI*2); ctx.fill();
   ctx.restore();
 }
 
@@ -837,7 +1020,19 @@ function updateHUD(){
   $('windTag').textContent = 'WIND '+(wind===0?'CALM':dir+' '+Math.abs(wind));
 }
 function setMsg(t){ $('msg').textContent = t; }
-function setControlsEnabled(on){ ['angR','angN','velR','velN','fireBtn'].forEach(id=>$(id).disabled=!on); }
+function setControlsEnabled(on){
+  if(phase!=='aim'){
+    ['angR','angN','velR','velN','fireBtn'].forEach(id=>$(id).disabled=true);
+    return;
+  }
+  if(mode==='net'){
+    // allow pre-aiming: sliders always enabled in net, only FIRE gated by turn
+    ['angR','angN','velR','velN'].forEach(id=>$(id).disabled=false);
+    $('fireBtn').disabled = !on;
+  }else{
+    ['angR','angN','velR','velN','fireBtn'].forEach(id=>$(id).disabled=!on);
+  }
+}
 function setSliders(a,v){
   a = Math.round(Math.max(0,Math.min(180,a)));
   v = Math.round(Math.max(1,Math.min(200,v)));
@@ -845,11 +1040,11 @@ function setSliders(a,v){
   $('velR').value = $('velN').value = v;
 }
 function nudgeAngle(d){
-  if(phase!=='aim' || $('fireBtn').disabled) return;
+  if(phase!=='aim' || $('angR').disabled) return;
   setSliders(+$('angN').value + d, +$('velN').value);
 }
 function nudgeVel(d){
-  if(phase!=='aim' || $('fireBtn').disabled) return;
+  if(phase!=='aim' || $('velR').disabled) return;
   setSliders(+$('angN').value, +$('velN').value + d);
 }
 [['angR','angN'],['velR','velN']].forEach(([a,b])=>{
@@ -857,6 +1052,23 @@ function nudgeVel(d){
   $(b).oninput = ()=> $(a).value = $(b).value;
 });
 $('fireBtn').onclick = ()=> fire($('angN').value, $('velN').value);
+$('angMinus').onclick = ()=> nudgeAngle(-1);
+$('angPlus').onclick = ()=> nudgeAngle(1);
+$('velMinus').onclick = ()=> nudgeVel(-1);
+$('velPlus').onclick = ()=> nudgeVel(1);
+(function(){
+  function hold(btn, fn){
+    let t, iv;
+    const start=e=>{ e.preventDefault(); fn(); t=setTimeout(()=> iv=setInterval(fn,70),280); };
+    const stop=()=>{ clearTimeout(t); clearInterval(iv); };
+    ['touchstart','mousedown'].forEach(ev=> btn.addEventListener(ev, start, {passive:false}));
+    ['touchend','touchcancel','mouseup','mouseleave'].forEach(ev=> btn.addEventListener(ev, stop));
+  }
+  hold($('angMinus'), ()=> nudgeAngle(-1));
+  hold($('angPlus'), ()=> nudgeAngle(1));
+  hold($('velMinus'), ()=> nudgeVel(-1));
+  hold($('velPlus'), ()=> nudgeVel(1));
+})();
 // In-game: arrow keys aim, Enter fires
 document.addEventListener('keydown', e=>{
   if($('menu').style.display !== 'none') return;      // menu owns the keyboard
@@ -977,6 +1189,7 @@ function startGame(m, seed){
   $('menuBtn').style.display = '';
   names = m==='bot' ? ['YOU','COMPUTER'] : ['PLAYER 1','PLAYER 2'];
   if(m==='net') names = myIndex===0 ? ['YOU','OPPONENT'] : ['OPPONENT','YOU'];
+  // keep nick info for HUD suffix (optional) — but preserve YOU/OPPONENT for test compatibility
   newMatch(seed);
   history.replaceState(null,'','#play');
 }
@@ -998,7 +1211,11 @@ function route(){
     return;
   }
   menu.panel = page==='settings' ? 'settings' : page==='help' ? 'help' : page==='online' ? 'net' : 'main';
-  if(page === 'online' && !net.room) initNet();
+  if(page === 'online'){
+    wireNick();
+    initLobby();
+    if(!net.room) initNet();
+  }
   menu.showPanel();
   menu.paint();
 }
@@ -1025,11 +1242,16 @@ function shareLink(code){
 
 function updateWaitingRoom(){
   const opp = $('state1');
-  opp.textContent = net.opponent ? 'CONNECTED ✓' : 'WAITING…';
+  // show nicks in slot names
+  const slotNames=document.querySelectorAll('#netPanel .players .slot .pname');
+  if(slotNames[0]) slotNames[0].textContent = myNick ? myNick.slice(0,12).toUpperCase()+' (YOU)' : 'YOU';
+  if(slotNames[1]) slotNames[1].textContent = oppNick ? oppNick.slice(0,12).toUpperCase() : 'OPPONENT';
+  opp.textContent = net.opponent ? (oppNick? oppNick.toUpperCase()+' ✓' : 'CONNECTED ✓') : 'WAITING…';
   opp.className = 'pstate' + (net.opponent ? ' ok' : '');
   const isHost = !!net.opponent && myIndex === 0;
   $('startBtn').style.display = isHost ? '' : 'none';
   $('startBtn').disabled = net.started;
+  renderLobby();
 }
 async function initNet(code){
   if(net.room) return;
@@ -1062,18 +1284,36 @@ async function initNet(code){
       net.opponent = id;
       // keep deterministic myIndex (hostFlag) — do not re-elect via selfId, so START reliably belongs to the host
       updateWaitingRoom();
+      // update lobby announce to reflect now full
+      announceLobby();
       $('netStatus').textContent = myIndex===0
         ? 'Opponent connected! Press START GAME.'
         : 'Opponent connected! Waiting for them to start…';
     };
-    net.initAct.onMessage = ({seed, gravity:g})=>{
+    net.initAct.onMessage = (data)=>{
+      const {seed, gravity:g, nick:hostNick, drop:hostDrop} = data||{};
       if(typeof g==='number') gravity = g;
+      if(typeof hostDrop==='boolean'){ dropGorilla = hostDrop; try{ localStorage.setItem('gorillas.drop', dropGorilla?'1':'0'); }catch(e){} paintSettings(); }
+      if(hostNick) oppNick = hostNick.slice(0,12);
       net.started = true;
+      stopLobbyAnnounce();
       if(mode!=='net') startGame('net', seed);
-      net.sendAck();                              // confirm to host (idempotent)
+      // reply ack with our nick & drop setting
+      const myN = getNick()||myNick||loadNick()||'Guest';
+      try{ net.sendAck({nick: myN.slice(0,12), drop: dropGorilla}); }catch(e){ net.sendAck(); }
     };
-    net.ackAct.onMessage = ()=>{
+    net.ackAct.onMessage = (data)=>{
       if(net.retryTimer){ clearTimeout(net.retryTimer); net.retryTimer = null; }
+      // host learns guest nick/drop
+      if(data && data.nick) oppNick = data.nick.slice(0,12);
+      if(data && typeof data.drop==='boolean'){ /* guest drop preference ignored — host rules */ }
+      // after ack, host stops announcing (game starting)
+      stopLobbyAnnounce();
+      // show opponent nick in waiting room slot
+      if(oppNick){
+        const s1=$('state1'); if(s1 && net.opponent) s1.textContent = oppNick.toUpperCase() + ' ✓';
+        // if we are guest, we now know host nick as oppNick, update HUD names after game starts they will be set
+      }
     };
     net.shotAct.onMessage = ({a,v})=>{
       if(mode==='net' && phase==='aim' && turn!==myIndex) fire(a, v, true);
@@ -1081,13 +1321,18 @@ async function initNet(code){
     room.onPeerLeave = (id)=>{
       if(id!==net.opponent) return;
       net.opponent = null;
+      oppNick='';
       net.started = false;
       if(net.retryTimer){ clearTimeout(net.retryTimer); net.retryTimer = null; }
       if(phase!=='menu') setMsg('⚠ OPPONENT DISCONNECTED.');
       $('netStatus').textContent = 'Opponent left. Share the link to invite someone else.';
       updateWaitingRoom();
+      // re-announce as open if we are host
+      if(net.isHost && net.code && !net.started) startLobbyAnnounce();
       showMenu(true);
     };
+    // lobby announce wire
+    initLobby().then(()=>{ if(hostFlag && !net.started) startLobbyAnnounce(); renderLobby(); });
   }catch(e){
     $('netStatus').textContent = 'Failed to load networking (offline?). Try another mode.';
     console.error('net init failed:', e);
@@ -1113,23 +1358,44 @@ function joinRoom(code){
   initNet(code);
   return true;
 }
-$('joinBtn').onclick = ()=> joinRoom($('joinCode').value);
+$('joinBtn').onclick = ()=>{
+  const n=ensureNick(); if(!n) return;
+  const code=$('joinCode').value;
+  // also fire a lobby join request so host sees who wants in (even before WebRTC)
+  if(lobby.joinReqAct && code){
+    const c=code.trim().toLowerCase();
+    const target = lobby.rooms.get(c)?.peerId;
+    try{ lobby.joinReqAct.send({code:c, nick:n.slice(0,12), ts:Date.now()}, target?{target}:undefined); }catch(e){}
+  }
+  joinRoom(code);
+};
 $('joinCode').addEventListener('keydown', e=>{
-  e.stopPropagation();                     // keep arrow keys from driving the game/menu
-  if(e.key === 'Enter'){ e.preventDefault(); joinRoom($('joinCode').value); }
+  e.stopPropagation();
+  if(e.key === 'Enter'){ e.preventDefault();
+    const n=ensureNick(); if(!n) return;
+    const code=$('joinCode').value;
+    if(lobby.joinReqAct && code){
+      const c=code.trim().toLowerCase();
+      const target = lobby.rooms.get(c)?.peerId;
+      try{ lobby.joinReqAct.send({code:c, nick:n.slice(0,12), ts:Date.now()}, target?{target}:undefined); }catch(e){}
+    }
+    joinRoom(code);
+  }
 });
 $('startBtn').onclick = ()=>{
   if(!net.opponent || myIndex !== 0 || net.started) return;
+  const n = ensureNick();
+  if(!n) return;
   net.started = true;
+  stopLobbyAnnounce();
   $('startBtn').disabled = true;
   const seed = (Math.random()*2**31)|0;
+  // propagate drop setting to guest so both have same Worms-feel
   startGame('net', seed);
-  // Re-send init until the guest acks — the WebRTC data channel can still be
-  // warming up right after onPeerJoin, so a single send can be dropped.
   let tries = 0;
   (function sendInit(){
     if(!net.opponent) return;
-    net.sendInit({seed, gravity});
+    net.sendInit({seed, gravity, nick: n.slice(0,12), drop: dropGorilla});
     if(++tries < 25) net.retryTimer = setTimeout(sendInit, 600);
   })();
 };
@@ -1138,6 +1404,8 @@ $('copyBtn').onclick = ()=>{
   $('copyBtn').textContent = 'COPIED!';
   setTimeout(()=> $('copyBtn').textContent = 'COPY LINK', 1200);
 };
+const _refreshLobbyBtn=$('refreshLobby');
+if(_refreshLobbyBtn) _refreshLobbyBtn.onclick = ()=>{ lobby.rooms.clear(); renderLobby(); announceLobby(); $('netStatus').textContent='Lobby refreshed — looking for rooms…'; };
 
 // ---------- settings page ----------
 function setGravity(g){
@@ -1149,6 +1417,7 @@ function paintSettings(){
   $('soundBtn').textContent = 'SOUND: ' + (A.sfxOn ? 'ON' : 'OFF');
   $('scanBtn').textContent = 'SCANLINES: ' + (scanlines ? 'ON' : 'OFF');
   $('crossBtn').textContent = 'CROSSHAIR: ' + (crosshair ? 'ON' : 'OFF');
+  $('dropBtn').textContent = 'DROP GORILLA: ' + (dropGorilla ? 'ON' : 'OFF');
 }
 function toggleSound(){
   A.sfxOn = !A.sfxOn;
@@ -1166,11 +1435,17 @@ function toggleCrosshair(){
   try{ localStorage.setItem('gorillas.crosshair', crosshair ? '1' : '0'); }catch(e){}
   paintSettings();
 }
+function toggleDrop(){
+  dropGorilla = !dropGorilla;
+  try{ localStorage.setItem('gorillas.drop', dropGorilla ? '1' : '0'); }catch(e){}
+  paintSettings();
+}
 $('gravDown').onclick = ()=> setGravity(gravity - 1);
 $('gravUp').onclick = ()=> setGravity(gravity + 1);
 $('soundBtn').onclick = toggleSound;
 $('scanBtn').onclick = toggleScanlines;
 $('crossBtn').onclick = toggleCrosshair;
+$('dropBtn').onclick = toggleDrop;
 document.addEventListener('keydown', e=>{
   if($('menu').style.display === 'none') return;
   if(menu.panel !== 'settings') return;
@@ -1182,6 +1457,9 @@ document.addEventListener('keydown', e=>{
 //  BOOT
 // ============================================================
 try{ crosshair = localStorage.getItem('gorillas.crosshair')==='1'; }catch(e){}
+try{ dropGorilla = localStorage.getItem('gorillas.drop')==='1'; }catch(e){}
+try{ myNick = loadNick(); if(myNick) $('nickInput')?.setAttribute('value', myNick); }catch(e){}
+wireNick();
 $('titleArt').textContent = TITLE_ART;
 menu.build();
 updateHUD();
