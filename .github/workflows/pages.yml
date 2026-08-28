@@ -25,7 +25,9 @@ jobs:
           cp index.html _site/
           cp gorillas.bas _site/
           cp -r lander _site/lander
+          cp cli _site/cli
           touch _site/.nojekyll
+          chmod +x _site/cli 2>/dev/null || true
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

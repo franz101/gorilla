@@ -1,0 +1,424 @@
+#!/bin/sh
+# GORILLAS.BAS — terminal edition
+# curl https://franz101.github.io/gorilla/cli | sh
+exec python3 - "$@" <<'PYEOF'
+#!/usr/bin/env python3
+import math, random, time, sys, os
+# Reattach to tty for interactive input when piped via curl
+if not sys.stdin.isatty():
+    try:
+        tty_in = open('/dev/tty', 'r')
+        tty_out = open('/dev/tty', 'w')
+        sys.stdin = tty_in
+        sys.stdout = tty_out
+        sys.stderr = tty_out
+    except Exception:
+        pass
+
+# --- constants (terminal scaled) ---
+H = 24
+WORLD_W = 80
+GROUND = 20
+GOR_W, GOR_H = 3, 2
+EXPL_R = 4
+VX, VY, GSCALE, WSCALE = 0.55, 0.32, 0.95, 0.22
+PALETTE = ['#']  # not used, terminal uses ASCII
+
+def mulberry32(seed):
+    def rng():
+        nonlocal seed
+        seed = (seed + 0x6D2B79F5) & 0xffffffff
+        t = (seed ^ (seed >> 15)) * (seed | 1)
+        t &= 0xffffffff
+        t = (t + ((t ^ (t >> 7)) * 61 ^ t) ) & 0xffffffff
+        t ^= t >> 14
+        return (t & 0xffffffff) / 4294967296
+    return rng
+
+def fnRan(rng, x): return int(rng()*x)+1
+
+def newWind(rng):
+    w = fnRan(rng,10)-5
+    if fnRan(rng,3)==1:
+        w += fnRan(rng,10) if w>0 else -fnRan(rng,10)
+    return max(-14,min(15,w))
+
+def genTerrain(rng):
+    buildings=[]
+    x=1
+    while x < WORLD_W-8:
+        bw = 5 + int(rng()*6)
+        if x+bw > WORLD_W-1: bw = WORLD_W-1-x
+        bh = 4 + int(rng()*8)
+        buildings.append({'x':x,'w':bw,'top':GROUND-bh})
+        x += bw + (1 if rng()<0.2 else 0)
+        if bw<=0: break
+    # gorillas near centre
+    mid=WORLD_W//2
+    # find building centre closest to mid-12 and mid+12
+    def closest(target):
+        best=None; bestd=1e9
+        for b in buildings:
+            cx=b['x']+b['w']//2
+            d=abs(cx-target)
+            if d<bestd:
+                bestd=d; best=b
+        return best
+    b0=closest(mid-12); b1=closest(mid+12)
+    if b0 is b1:
+        # pick neighbour
+        idx=buildings.index(b0)
+        if idx+1 < len(buildings): b1=buildings[idx+1]
+        elif idx>0: b1=buildings[idx-1]
+    def mk(b): return {'x': b['x']+b['w']//2, 'y': b['top']-GOR_H, 'alive':True}
+    top=[GROUND]*WORLD_W
+    for b in buildings:
+        for c in range(max(0,b['x']), min(WORLD_W, b['x']+b['w'])):
+            top[c]=b['top']
+    return buildings, top, [mk(b0), mk(b1)]
+
+def facingOf(i): return 1 if i==0 else -1
+def launchPos(g,f): return (g['x'] + f*(GOR_W//2+1), g['y'])
+
+def makeShot(x,y,ang,vel,facing,wind,gravity):
+    a=math.radians(ang)
+    return {'x':float(x),'y':float(y),'vx':math.cos(a)*vel*VX*facing,'vy':-math.sin(a)*vel*VY,'g':gravity*GSCALE,'windA':wind*WSCALE}
+
+def stepShot(s,dt):
+    s['vy']+=s['g']*dt
+    s['vx']+=s['windA']*dt
+    s['x']+=s['vx']*dt
+    s['y']+=s['vy']*dt
+
+def collide(x,y,top,gorillas):
+    if x < -5 or x > WORLD_W+5: return ('out',None)
+    for i,g in enumerate(gorillas):
+        if g['alive'] and abs(x-g['x']) <= GOR_W//2+1 and g['y'] <= y <= g['y']+GOR_H:
+            return ('gorilla',i)
+    c=int(math.floor(x))
+    if 0 <= c < WORLD_W and y >= top[c]: return ('building',None)
+    if y >= GROUND: return ('building',None)
+    return None
+
+def explode(x,y,top):
+    rr=EXPL_R*EXPL_R
+    for c in range(max(0,int(x-EXPL_R)), min(WORLD_W, int(x+EXPL_R)+1)):
+        dx=c-x
+        d2=rr-dx*dx
+        if d2<0: continue
+        bottom=y+math.sqrt(d2)
+        if bottom > top[c]:
+            top[c]=min(GROUND, max(top[c], int(round(bottom))))
+
+def applyDrop(gorillas, top, enabled):
+    if not enabled: return
+    for g in gorillas:
+        if not g['alive']: continue
+        cx=max(0,min(WORLD_W-1, int(round(g['x']))))
+        ny=top[cx]-GOR_H
+        if ny > g['y']: g['y']=ny
+        if g['y'] > GROUND-GOR_H: g['y']=GROUND-GOR_H
+
+def solveShot(me,opp,top,gorillas,wind,gravity):
+    f=facingOf(me)
+    g=gorillas[me]
+    lp=launchPos(g,f)
+    tg=gorillas[opp]
+    tx,ty=tg['x'], tg['y']+0.5
+    best=None
+    for ang in range(12,83,2):
+        for vel in range(15,120,4):
+            s=makeShot(lp[0],lp[1],ang,vel,f,wind,gravity)
+            dmin=float('inf')
+            for _ in range(600):
+                stepShot(s,0.08)
+                dx=s['x']-tx; dy=s['y']-ty; d=dx*dx+dy*dy
+                if d<dmin: dmin=d
+                c=collide(s['x'],s['y'],top,gorillas)
+                if c:
+                    if c[0]=='gorilla' and c[1]==opp: dmin=0
+                    break
+                if s['y']>GROUND and s['vy']>0: break
+            if best is None or dmin < best[2]:
+                best=(ang,vel,dmin)
+    if best is None: return (45,50)
+    ang,vel,_=best
+    ang+= random.uniform(-1.5,1.5)
+    vel+= random.uniform(-2,2)
+    return (max(0,min(180,ang)), max(1,min(120,vel)))
+
+def clear(): 
+    try: os.system('clear' if os.name!='nt' else 'cls')
+    except: print("\033[2J\033[H", end='')
+
+def draw(buildings, top, gorillas, wind, turn, scores, phase, msg, crosshair, ang, vel, shot=None, boom=None):
+    # buffer  H rows x WORLD_W cols
+    buf=[[' ' for _ in range(WORLD_W)] for _ in range(H)]
+    # sky already space
+    # buildings
+    for b in buildings:
+        for x in range(b['x'], b['x']+b['w']):
+            for y in range(b['top'], GROUND):
+                if 0<=x<WORLD_W and 0<=y<H:
+                    # windows every other
+                    if (x-b['x'])%3==1 and (y-b['top'])%2==0 and y < GROUND-1:
+                        buf[y][x]='#' if random.random()<0.4 else '.'
+                    else:
+                        buf[y][x]='█'
+    # ground line
+    for x in range(WORLD_W):
+        if GROUND < H: buf[GROUND][x]='▔'
+    # gorillas
+    for i,g in enumerate(gorillas):
+        if not g['alive']: continue
+        x,y=int(round(g['x'])), int(round(g['y']))
+        # simple gorilla 3x2
+        for dx,ch in enumerate(['▓','▓','▓']):
+            if 0<=x+dx-1<WORLD_W and 0<=y<H: buf[y][x+dx-1]=ch
+        for dx,ch in enumerate(['▓','☺','▓']):
+            if 0<=x+dx-1<WORLD_W and 0<=y+1<H: buf[y+1][x+dx-1]=ch
+        # banana when aiming
+        if phase=='aim' and turn==i and g['alive']:
+            f=facingOf(i)
+            bx=x+f*2; by=y-1
+            if 0<=bx<WORLD_W and 0<=by<H: buf[by][bx]='o'
+    # crosshair direction-only
+    if crosshair and phase=='aim' and gorillas[turn]['alive']:
+        f=facingOf(turn)
+        lp=launchPos(gorillas[turn],f)
+        rad=math.radians(ang)
+        length=7
+        x2=int(round(lp[0]+math.cos(rad)*length*f))
+        y2=int(round(lp[1]-math.sin(rad)*length))
+        # line
+        steps=max(abs(x2-int(lp[0])), abs(y2-int(lp[1])),1)
+        for t in range(steps+1):
+            x=int(round(lp[0]+(x2-lp[0])*t/steps)); y=int(round(lp[1]+(y2-lp[1])*t/steps))
+            if 0<=x<WORLD_W and 0<=y<H and buf[y][x]==' ': buf[y][x]='·'
+        if 0<=x2<WORLD_W and 0<=y2<H: buf[y2][x2]='+'
+    # shot
+    if shot and phase=='flying':
+        x,y=int(round(shot['x'])), int(round(shot['y']))
+        if 0<=x<WORLD_W and 0<=y<H: buf[y][x]='●'
+    # boom
+    if boom:
+        x,y=int(round(boom['x'])), int(round(boom['y']))
+        for dy in range(-1,2):
+            for dx in range(-1,2):
+                if 0<=x+dx<WORLD_W and 0<=y+dy<H: buf[y+dy][x+dx]='*'
+    # render buffer with colors
+    clear()
+    # HUD
+    p1=f"You {scores[0]}" if turn==0 else f"You {scores[0]}"
+    # actually show both
+    left=f"YOU {scores[0]}" if mode_global[0]=='hot' or True else ""
+    # simplified HUD
+    print(f"\033[44m\033[97m YOU {scores[0]}  {'WIND '+('→' if wind>0 else '←' if wind<0 else 'CALM')+(' '+str(abs(wind)) if wind!=0 else ''):^12}  {scores[1]} COMPUTER \033[0m" if mode_global[0]=='bot' else f"\033[44m\033[97m P1 {scores[0]}  {'WIND '+('→' if wind>0 else '←' if wind<0 else 'CALM')+(' '+str(abs(wind)) if wind!=0 else ''):^12}  P2 {scores[1]} \033[0m")
+    if msg: print(f"\033[33m{msg:^80}\033[0m")
+    # skyline
+    for y in range(H):
+        line=''.join(buf[y])
+        # color buildings: use yellow for windows
+        print(line)
+    # controls hint
+    print(f"\nANGLE {ang:3.0f}°  VELOCITY {vel:3.0f}  (←→ angle  ↑↓ velocity  ENTER fire)  gravity {gravity_global[0]:.1f}")
+
+# globals for draw
+mode_global=['hot']
+gravity_global=[9.8]
+
+def prompt_int(msg, lo, hi, default):
+    while True:
+        try:
+            s=input(msg).strip()
+            if s=='':
+                return default
+            v=int(float(s))
+            if lo<=v<=hi: return v
+            print(f"Enter {lo}-{hi}")
+        except (EOFError, KeyboardInterrupt):
+            raise
+        except: print("Invalid number")
+
+def play():
+    rng=mulberry32(int(time.time()*1000) & 0xffffffff)
+    gravity=9.8
+    crosshair=False
+    drop=False
+    gravity_global[0]=gravity
+    # menu
+    while True:
+        clear()
+        print("\033[44m\033[93m")
+        print("  ##### ##### ##### ##### #     #     ##### #####  ")
+        print("  #     #   # #   #   #   #     #     #   # #      ")
+        print("  # ### #   # ####    #   #     #     ##### #####  ")
+        print("  #   # #   # #  #    #   #     #     #   #     #  ")
+        print("  ##### ##### #   # ##### ##### ##### #   # #####  ")
+        print("\033[0m")
+        print("\033[96m  ★ MODERN TERMINAL CLONE ★\033[0m")
+        print("  v2.2 deluxe · terminal (curl https://franz101.github.io/gorilla/cli | sh)\n")
+        print("  1) TWO PLAYERS (hotseat)")
+        print("  2) PLAY VS COMPUTER")
+        print("  3) SETTINGS  [gravity {:.1f}  crosshair {}  drop {}]".format(gravity, "ON" if crosshair else "OFF", "ON" if drop else "OFF"))
+        print("  4) INSTRUCTIONS")
+        print("  5) QUIT")
+        try: ch=input("\nSelect 1-5 > ").strip()
+        except: return
+        if ch=='1':
+            mode_global[0]='hot'
+            game_loop(rng, gravity, crosshair, drop, 'hot')
+        elif ch=='2':
+            mode_global[0]='bot'
+            game_loop(rng, gravity, crosshair, drop, 'bot')
+        elif ch=='3':
+            while True:
+                clear()
+                print(f"SETTINGS\n1) Gravity: {gravity:.1f}  (Earth 9.8)\n2) Crosshair: {'ON' if crosshair else 'OFF'}  (angle direction)\n3) Drop Gorilla: {'ON' if drop else 'OFF'} (Worms-like)\n4) Back")
+                try: c=input("Choice > ").strip()
+                except: break
+                if c=='1':
+                    gravity=prompt_int("Gravity 1-30 [9.8]: ",1,30,int(gravity) if gravity==int(gravity) else 10)
+                    gravity_global[0]=float(gravity)
+                elif c=='2': crosshair=not crosshair; print("Crosshair", "ON" if crosshair else "OFF"); time.sleep(0.6)
+                elif c=='3': drop=not drop; print("Drop", "ON" if drop else "OFF"); time.sleep(0.6)
+                elif c=='4' or c=='': break
+        elif ch=='4':
+            clear()
+            print("Your mission is to hit the opponent with an exploding banana.\nAngle 0-180 (0 toward opponent, 90 up), Velocity 1-200.\nWind affects drift, gravity pulls down.\nOnly direct gorilla hit scores; building hits carve craters.\nIf DROP is ON, gorillas fall with destroyed buildings (Worms-like).\n")
+            input("Press ENTER to return")
+        elif ch=='5' or ch.lower()=='q':
+            print("Bye!"); return
+
+def game_loop(rng, gravity, crosshair, drop, mode):
+    gravity_global[0]=gravity
+    mode_global[0]=mode
+    buildings, top, gorillas = genTerrain(rng)
+    wind=newWind(rng)
+    turn=0
+    scores=[0,0]
+    names=['P1','P2'] if mode=='hot' else ['YOU','COMPUTER']
+    phase='aim'
+    ang, vel = 45, 50
+    while True:
+        # render
+        msg=f"{'YOUR' if names[turn]=='YOU' else names[turn]}'S TURN" if mode!='hot' else f"PLAYER {turn+1}'S TURN"
+        draw(buildings, top, gorillas, wind, turn, scores, phase, msg, crosshair, ang, vel)
+        if mode=='bot' and turn==1:
+            print("COMPUTER IS THINKING…")
+            time.sleep(0.7)
+            s_ang, s_vel = solveShot(1,0,top,gorillas,wind,gravity)
+            print(f"COMPUTER FIRES: angle {s_ang:.0f}, velocity {s_vel:.0f}")
+            time.sleep(0.6)
+            ang, vel = s_ang, s_vel
+            # fire computer
+            f=facingOf(turn)
+            lp=launchPos(gorillas[turn],f)
+            shot=makeShot(lp[0],lp[1],ang,vel,f,wind,gravity)
+            # animate
+            for _ in range(800):
+                stepShot(shot,0.08)
+                c=collide(shot['x'],shot['y'],top,gorillas)
+                draw(buildings, top, gorillas, wind, turn, scores, 'flying', "BANANA IN FLIGHT…", crosshair, ang, vel, shot=shot)
+                time.sleep(0.02)
+                if c: break
+                if shot['y']>=GROUND: break
+                if shot['x']<-5 or shot['x']>WORLD_W+5: break
+            # handle collision
+            c=collide(shot['x'],shot['y'],top,gorillas)
+            if not c and shot['y']>=GROUND-1:
+                print("Miss! Banana lands short."); time.sleep(1.2)
+                wind=newWind(rng); turn^=1; continue
+            if c and c[0]=='out':
+                print("Off screen! Miss!"); time.sleep(1.2)
+                wind=newWind(rng); turn^=1; continue
+            if c and c[0]=='building':
+                print("Building hit! BOOM!"); 
+                for t in range(6):
+                    draw(buildings, top, gorillas, wind, turn, scores, 'boom', "BOOM!", crosshair, ang, vel, boom={'x':shot['x'],'y':shot['y']})
+                    time.sleep(0.07)
+                explode(shot['x'],shot['y'],top)
+                applyDrop(gorillas, top, drop)
+                wind=newWind(rng); turn^=1; continue
+            if c and c[0]=='gorilla':
+                gorillas[c[1]]['alive']=False
+                for t in range(8):
+                    draw(buildings, top, gorillas, wind, turn, scores, 'boom', "HIT!", crosshair, ang, vel, boom={'x':shot['x'],'y':shot['y']})
+                    time.sleep(0.07)
+                hit=c[1]
+                if hit==1: # computer is 1, you is 0 -> you scored
+                    scores[0]+=1
+                    print("YOU SCORES!"); time.sleep(1.5)
+                else:
+                    scores[1]+=1
+                    print("COMPUTER SCORES!"); time.sleep(1.5)
+                # next round
+                buildings, top, gorillas = genTerrain(rng)
+                wind=newWind(rng)
+                turn^=1  # alternate starter? simple toggle
+                continue
+            wind=newWind(rng); turn^=1
+        else:
+            # human turn
+            try:
+                # allow pre-aim even if not your turn? For hotseat it's always your turn, for bot it's your turn only when turn==0
+                # we are in human branch, so turn is human
+                a_in=input(f"Angle (0-180) [{ang:.0f}]: ").strip()
+                if a_in!='': ang=max(0,min(180,float(a_in)))
+                v_in=input(f"Velocity (1-200) [{vel:.0f}]: ").strip()
+                if v_in!='': vel=max(1,min(200,float(v_in)))
+                # fire
+                f=facingOf(turn)
+                lp=launchPos(gorillas[turn],f)
+                shot=makeShot(lp[0],lp[1],ang,vel,f,wind,gravity)
+                for _ in range(800):
+                    stepShot(shot,0.08)
+                    c=collide(shot['x'],shot['y'],top,gorillas)
+                    draw(buildings, top, gorillas, wind, turn, scores, 'flying', "BANANA IN FLIGHT…", crosshair, ang, vel, shot=shot)
+                    time.sleep(0.02)
+                    if c: break
+                    if shot['y']>=GROUND: break
+                    if shot['x']<-5 or shot['x']>WORLD_W+5: break
+                c=collide(shot['x'],shot['y'],top,gorillas)
+                if not c and shot['y']>=GROUND-1:
+                    print("Miss!"); time.sleep(1.2)
+                    wind=newWind(rng); turn^=1; continue
+                if c and c[0]=='out':
+                    print("Off screen!"); time.sleep(1.2)
+                    wind=newWind(rng); turn^=1; continue
+                if c and c[0]=='building':
+                    print("BOOM! Building hit"); 
+                    for t in range(6):
+                        draw(buildings, top, gorillas, wind, turn, scores, 'boom', "BOOM!", crosshair, ang, vel, boom={'x':shot['x'],'y':shot['y']})
+                        time.sleep(0.07)
+                    explode(shot['x'],shot['y'],top)
+                    applyDrop(gorillas, top, drop)
+                    wind=newWind(rng); turn^=1; continue
+                if c and c[0]=='gorilla':
+                    gorillas[c[1]]['alive']=False
+                    for t in range(8):
+                        draw(buildings, top, gorillas, wind, turn, scores, 'boom', "HIT!", crosshair, ang, vel, boom={'x':shot['x'],'y':shot['y']})
+                        time.sleep(0.07)
+                    if c[1]!=turn:
+                        scores[turn]+=1
+                        print(f"PLAYER {turn+1} SCORES!" if mode=='hot' else "YOU SCORE!")
+                    else:
+                        scores[turn^1]+=1
+                        print("SELF HIT! Opponent scores!")
+                    time.sleep(1.5)
+                    buildings, top, gorillas = genTerrain(rng)
+                    wind=newWind(rng)
+                    # alternate starter
+                    continue
+            except (KeyboardInterrupt, EOFError):
+                print("\nBack to menu"); return
+            except Exception as e:
+                print("Error",e); time.sleep(1)
+
+if __name__=='__main__':
+    try:
+        play()
+    except KeyboardInterrupt:
+        print("\nBye!")
+
+PYEOF
