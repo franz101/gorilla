@@ -41,8 +41,10 @@ if (!process.stdin.isTTY) {
   }
 }
 
-// --- constants (match web) ---
-const H=24, WORLD_W=80, GROUND=20, GOR_W=3, GOR_H=2, EXPL_R=4;
+// --- constants (match web) - full screen via terminal size ---
+const TERM_W = process.stdout.columns || 80;
+const TERM_H = process.stdout.rows || 24;
+const H = Math.max(18, TERM_H - 8), WORLD_W = Math.max(60, TERM_W), GROUND = H - 4, GOR_W=3, GOR_H=2, EXPL_R=4;
 const VX=0.55, VY=0.32, GSCALE=0.95, WSCALE=0.22;
 let gravity=9.8, crosshair=false, dropGorilla=false;
 let mode='hot', myIndex=0, myNick='', oppNick='';
@@ -132,15 +134,20 @@ function draw(buildings,top,gorillas,wind,turn,scores,phase,msg,ang,vel,shot=nul
   for(let i=0;i<gorillas.length;i++){
     const g=gorillas[i]; if(!g.alive) continue;
     const x=Math.round(g.x), y=Math.round(g.y);
-    const cols=[['▓','▓','▓'],['▓','☺','▓']];
+    // monkey-like: use 🐒 emoji as base, with body
+    const cols=[['▄','▀','▄'],['▐','🐒','▌']];
+    // fallback to block if emoji not supported: use ▓
     for(let dy=0;dy<2;dy++) for(let dx=0;dx<3;dx++){
       const xx=x+dx-1, yy=y+dy;
-      if(xx>=0&&xx<WORLD_W&&yy>=0&&yy<H) buf[yy][xx]={ch:cols[dy][dx], fg:'\x1b[38;5;94m', bg:GOR_BG};
+      if(xx>=0&&xx<WORLD_W&&yy>=0&&yy<H) {
+        const ch = cols[dy][dx]==='🐒' ? '🐒' : '▓';
+        buf[yy][xx]={ch: ch, fg: ch==='🐒' ? '\x1b[38;5;220m' : '\x1b[38;5;94m', bg:GOR_BG};
+      }
     }
+    // ears
     if(g.alive){
-      const eyeY=y+1;
-      if(x>=0&&x<WORLD_W&&eyeY>=0&&eyeY<H) buf[eyeY][x-1]={ch:'·',fg:'\x1b[38;5;231m',bg:GOR_BG};
-      if(x+1>=0&&x+1<WORLD_W&&eyeY>=0&&eyeY<H) buf[eyeY][x+1]={ch:'·',fg:'\x1b[38;5;231m',bg:GOR_BG};
+      if(x-2>=0&&y>=0&&y<H) buf[y][x-2]={ch:'◐',fg:'\x1b[38;5;94m',bg:GOR_BG};
+      if(x+2>=0&&x+2<WORLD_W&&y>=0&&y<H) buf[y][x+2]={ch:'◑',fg:'\x1b[38;5;94m',bg:GOR_BG};
     }
     if(phase==='aim'&&turn===i){
       const bx=x+facingOf(i)*2, by=y-1;

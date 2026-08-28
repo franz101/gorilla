@@ -61,19 +61,19 @@ input[type=range]{width:110px; accent-color:var(--c-acc); touch-action:manipulat
 }
 #controls .nudge:active{filter:brightness(1.4); transform:scale(0.97)}
 @media(max-width:640px){
-  #controls{gap:4px 6px; padding:6px 6px 8px; flex-wrap:wrap; justify-content:center; align-items:center}
-  #controls .stat{font-size:12px; gap:4px; width:100%; max-width:350px; justify-content:center; min-height:32px}
-  #controls .stat .lbl{width:64px; font-size:11px; letter-spacing:0.5px}
-  input[type=range]{flex:1; min-width:0; width:auto; height:28px}
-  input[type=range]::-webkit-slider-thumb{width:22px;height:22px}
-  input[type=range]::-moz-range-thumb{width:22px;height:22px}
-  input[type=number]{width:56px;height:32px;font-size:14px;padding:2px 4px; flex-shrink:0}
-  #controls button{padding:6px 12px; font-size:13px; min-height:36px}
-  #controls .nudge{min-width:36px; min-height:36px; font-size:16px; flex-shrink:0}
+  #controls{gap:2px 4px; padding:4px 4px 6px; flex-wrap:wrap; justify-content:center; align-items:center; backdrop-filter:blur(2px)}
+  #controls .stat{font-size:11px; gap:3px; width:100%; max-width:98vw; justify-content:center; min-height:28px}
+  #controls .stat .lbl{width:58px; font-size:10px; letter-spacing:0.5px}
+  input[type=range]{flex:1; min-width:0; width:auto; height:26px}
+  input[type=range]::-webkit-slider-thumb{width:20px;height:20px}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px}
+  input[type=number]{width:52px;height:28px;font-size:13px;padding:2px 4px; flex-shrink:0}
+  #controls button{padding:5px 10px; font-size:12px; min-height:32px}
+  #controls .nudge{min-width:38px; min-height:32px; font-size:16px; flex-shrink:0; border-radius:8px}
   #controls .hint{display:none}
   #controls #fireBtn, #controls #muteBtn, #controls #menuBtn{flex:0 0 auto}
-  #menu pre.title{white-space:pre-wrap; word-break:break-word; font-size:clamp(6px,1.7vw,10px); overflow-x:visible}
-  #menu .crt-inner{width:min(680px, calc(100vw - 20px)); max-width:96vw; padding:10px 12px; box-sizing:border-box}
+  #hud{font-size:11px; padding:3px 6px; gap:4px}
+  #msg{font-size:11px; top:32px}
 }
 @media(max-width:400px){
   #controls{gap:4px 6px; padding:6px 4px 6px}
@@ -206,8 +206,9 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
 </div>
 <div id="msg"></div>
 <div id="controls">
-  <span class="stat"><span class="lbl">ANGLE</span> <button id="angMinus" class="ghost nudge" aria-label="angle down">−</button><input type="range" id="angR" min="0" max="180" value="45"><input type="number" id="angN" min="0" max="180" value="45" inputmode="numeric"><button id="angPlus" class="ghost nudge" aria-label="angle up">+</button></span>
-  <span class="stat"><span class="lbl">VELOCITY</span> <button id="velMinus" class="ghost nudge" aria-label="velocity down">−</button><input type="range" id="velR" min="1" max="200" value="50"><input type="number" id="velN" min="1" max="200" value="50" inputmode="numeric"><button id="velPlus" class="ghost nudge" aria-label="velocity up">+</button></span>
+  <span class="stat"><span class="lbl">ANGLE</span> <button id="angMinus" class="ghost nudge" aria-label="angle left">←</button><input type="range" id="angR" min="0" max="180" value="45"><input type="number" id="angN" min="0" max="180" value="45" inputmode="numeric"><button id="angPlus" class="ghost nudge" aria-label="angle right">→</button></span>
+  <span class="stat"><span class="lbl">VELOCITY</span> <button id="velMinus" class="ghost nudge" aria-label="velocity down">↓</button><input type="range" id="velR" min="1" max="200" value="50"><input type="number" id="velN" min="1" max="200" value="50" inputmode="numeric"><button id="velPlus" class="ghost nudge" aria-label="velocity up">↑</button></span>
+  <button id="fsBtn" class="ghost" title="toggle fullscreen" style="padding:6px 10px">⛶</button>
   <span class="hint"><kbd>&#8592;</kbd><kbd>&#8594;</kbd> angle &nbsp; <kbd>&#8593;</kbd><kbd>&#8595;</kbd> velocity &nbsp; <kbd>ENTER</kbd> fire</span>
   <button id="fireBtn">FIRE &#9166;</button>
   <button id="muteBtn" class="ghost" title="toggle music/sfx">SND ON</button>
@@ -970,28 +971,67 @@ function drawGorilla(i, ts){
   const g = gorillas[i], f = facingOf(i);
   const C = g.alive ? GOR_BODY : '#AAAAAA';
   const D = g.alive ? GOR_DARK : '#555555';
+  const skin = g.alive ? '#FFDDAA' : '#CCCCCC';
+  const pink = g.alive ? '#FF8DA1' : '#AAAAAA';
   let bounce = 0;
   if(phase==='over' && winner===i){ danceT += 0.03; bounce = Math.abs(Math.sin(danceT*10))*6; }
   ctx.save(); ctx.translate(Math.round(g.x), Math.round(g.y - bounce));
   const up = g.alive && ((phase==='aim'&&turn===i) || (phase==='flying'&&shotOwner===i));
+  // shadow
+  if(g.alive){ ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(0,30,14,3,0,0,Math.PI*2); ctx.fill(); }
+  // feet
   ctx.fillStyle = D; ctx.fillRect(-9,24,7,6); ctx.fillRect(2,24,7,6);
+  ctx.fillStyle = '#111'; ctx.fillRect(-9,28,7,2); ctx.fillRect(2,28,7,2);
+  // tail (monkey)
+  if(g.alive){
+    ctx.strokeStyle = D; ctx.lineWidth = 3; ctx.lineCap='round';
+    ctx.beginPath();
+    const wag = Math.sin(ts/180)*1.5;
+    ctx.moveTo(10,18); ctx.quadraticCurveTo(16+wag,22, 12,26); ctx.stroke();
+    ctx.fillStyle = C; ctx.beginPath(); ctx.arc(12,26,2.2,0,Math.PI*2); ctx.fill();
+  }
+  // body
   ctx.fillStyle = C; ctx.fillRect(-11,10,22,15);
   ctx.fillStyle = D; ctx.fillRect(-11,10,22,2);
+  // chest highlight
+  if(g.alive){ ctx.fillStyle = '#C68642'; ctx.fillRect(-5,14,10,7); ctx.fillStyle = D; ctx.fillRect(-2,16,4,1); }
+  // arms
   ctx.fillStyle = C;
   if(up){ ctx.fillRect(-15,-6,6,16); ctx.fillRect(9,-6,6,16); }
   else  { ctx.fillRect(-15,11,6,13); ctx.fillRect(9,11,6,13); }
+  // hands
+  ctx.fillStyle = skin; 
+  if(up){ ctx.beginPath(); ctx.arc(-12,-6,3,0,Math.PI*2); ctx.arc(12,-6,3,0,Math.PI*2); ctx.fill(); }
+  else { ctx.fillRect(-15,22,6,3); ctx.fillRect(9,22,6,3); }
+  // head
   ctx.fillStyle = C; ctx.fillRect(-8,-1,16,12);
   ctx.fillStyle = D; ctx.fillRect(-8,-1,16,4);
+  // ears (more monkey-like)
+  ctx.fillStyle = C; ctx.beginPath(); ctx.arc(-9,-2,4.5,0,Math.PI*2); ctx.arc(9,-2,4.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = pink; ctx.beginPath(); ctx.arc(-9,-2,2.2,0,Math.PI*2); ctx.arc(9,-2,2.2,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = D; ctx.beginPath(); ctx.arc(-9,-2,1.8,0,Math.PI*2); ctx.arc(9,-2,1.8,0,Math.PI*2); ctx.stroke();
+  // muzzle (monkey)
+  ctx.fillStyle = skin; ctx.fillRect(-6,2,12,7);
+  ctx.fillStyle = '#E8C4A8'; ctx.fillRect(-6,2,12,2);
+  // eyes
   if(g.alive){
-    ctx.fillStyle = '#fff'; ctx.fillRect(-5,4,3,3); ctx.fillRect(2,4,3,3);
-    ctx.fillStyle = '#000'; ctx.fillRect(-4+f,5,2,2); ctx.fillRect(3+f,5,2,2);
-    ctx.fillStyle = D; ctx.fillRect(-2,8,4,2);
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(-4,4,3.2,3.8,0,0,Math.PI*2); ctx.ellipse(4,4,3.2,3.8,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#3B1F0B'; ctx.beginPath(); ctx.arc(-4+f*0.8,4.2,1.7,0,Math.PI*2); ctx.arc(4+f*0.8,4.2,1.7,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-4+f*0.8-0.5,3.5,0.6,0,Math.PI*2); ctx.arc(4+f*0.8-0.5,3.5,0.6,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#5A3A1A'; ctx.beginPath(); ctx.ellipse(0,6.8,1.2,0.9,0,0,Math.PI*2); ctx.fill();
+    // smile vs o when aiming
+    ctx.strokeStyle = '#5A3A1A'; ctx.lineWidth = 1.1; ctx.lineCap='round';
+    ctx.beginPath();
+    if(up) ctx.arc(0,8.2,1.8,0.15*Math.PI,0.85*Math.PI);
+    else ctx.arc(0,8.5,2.2,0.1*Math.PI,0.9*Math.PI);
+    ctx.stroke();
   }else{
     ctx.strokeStyle = '#222'; ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(-6,3); ctx.lineTo(-1,8); ctx.moveTo(-1,3); ctx.lineTo(-6,8);
     ctx.moveTo(1,3); ctx.lineTo(6,8); ctx.moveTo(6,3); ctx.lineTo(1,8);
     ctx.stroke();
+    ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(0,8.5,1.2,0,Math.PI*2); ctx.fill();
   }
   if(phase==='aim' && turn===i && g.alive) drawBanana(f*13, -8, ts/150);
   ctx.restore();
@@ -1169,6 +1209,10 @@ $('muteBtn').onclick = ()=>{
   $('muteBtn').textContent = A.sfxOn ? 'SND ON' : 'SND OFF';
 };
 $('menuBtn').onclick = ()=> showMenu(true);
+$('fsBtn').onclick = ()=>{
+  if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen().catch(()=>{});
+};
 
 // ============================================================
 //  DOS-STYLE MENU SYSTEM
@@ -1277,6 +1321,10 @@ function startGame(m, seed){
   // keep nick info for HUD suffix (optional) — but preserve YOU/OPPONENT for test compatibility
   newMatch(seed);
   history.replaceState(null,'','#play');
+  // more full screen on mobile
+  if(window.innerWidth < 640 && !document.fullscreenElement && document.documentElement.requestFullscreen){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  }
 }
 function goto(hash){
   if(location.hash === hash) route();
