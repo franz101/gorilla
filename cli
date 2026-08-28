@@ -12,7 +12,9 @@ else
 fi
 
 if [ -n "$NODE" ]; then
-  TMPJS=$(mktemp /tmp/gorilla-XXXXXX.js 2>/dev/null || mktemp -t gorilla 2>/dev/null || echo /tmp/gorilla-$$.js)
+  TMPBASE=$(mktemp /tmp/gorilla.XXXXXX 2>/dev/null || mktemp -t gorilla 2>/dev/null || echo /tmp/gorilla-$$)
+  TMPJS="${TMPBASE}.mjs"
+  rm -f "$TMPBASE" 2>/dev/null || true
   cat > "$TMPJS" <<'NODEEOF'
 #!/usr/bin/env node
 // GORILLAS.BAS — Node.js terminal edition with P2P + pixel ASCII (web-like)
