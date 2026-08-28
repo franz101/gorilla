@@ -44,6 +44,7 @@ canvas{
   background:linear-gradient(rgba(0,0,120,.05), rgba(0,0,120,.6));
 }
 #controls .stat{display:flex; align-items:center; gap:5px; color:var(--c-fg); letter-spacing:1px; text-shadow:0 1px 2px rgba(0,0,0,.8)}
+#controls .stat .lbl{width:68px; text-align:right; flex-shrink:0}
 #controls .hint{display:flex; align-items:center; gap:2px; color:var(--c-fg); font-size:11px; text-shadow:0 1px 2px rgba(0,0,0,.8)}
 #controls kbd{
   color:#fff; background:rgba(0,0,60,.7); border:1px solid #55FFFF; border-radius:3px;
@@ -60,18 +61,21 @@ input[type=range]{width:110px; accent-color:var(--c-acc); touch-action:manipulat
 }
 #controls .nudge:active{filter:brightness(1.4); transform:scale(0.97)}
 @media(max-width:640px){
-  #controls{gap:6px 8px; padding:10px 8px 12px}
-  #controls .stat{font-size:13px; gap:4px}
-  input[type=range]{width:124px; height:36px}
+  #controls{gap:8px 8px; padding:12px 8px 14px; flex-direction:column; align-items:center}
+  #controls .stat{font-size:13px; gap:6px; width:100%; max-width:360px; justify-content:center}
+  #controls .stat .lbl{width:74px}
+  input[type=range]{flex:1; min-width:0; width:auto; height:36px}
   input[type=range]::-webkit-slider-thumb{width:28px;height:28px}
   input[type=range]::-moz-range-thumb{width:28px;height:28px}
-  input[type=number]{width:62px;height:38px;font-size:16px;padding:4px 6px}
+  input[type=number]{width:62px;height:40px;font-size:16px;padding:4px 6px; flex-shrink:0}
   #controls button{padding:10px 18px; font-size:16px; min-height:44px}
-  #controls .nudge{min-width:44px; min-height:44px; font-size:20px}
+  #controls .nudge{min-width:44px; min-height:44px; font-size:20px; flex-shrink:0}
   #controls .hint{display:none}
+  #controls #fireBtn, #controls #muteBtn, #controls #menuBtn{flex:0 0 auto}
 }
 @media(max-width:400px){
-  input[type=range]{width:100px}
+  #controls .stat{max-width:340px}
+  input[type=range]{flex:1}
 }
 #menu .panel input[type=text]{
   width:120px; background:#000055; color:#FFFF55; border:1px solid #55FFFF;
@@ -170,8 +174,8 @@ button:focus-visible, input:focus-visible{outline:2px solid var(--c-cyan); outli
 </div>
 <div id="msg"></div>
 <div id="controls">
-  <span class="stat">ANGLE <button id="angMinus" class="ghost nudge" aria-label="angle down">−</button><input type="range" id="angR" min="0" max="180" value="45"><input type="number" id="angN" min="0" max="180" value="45" inputmode="numeric"><button id="angPlus" class="ghost nudge" aria-label="angle up">+</button></span>
-  <span class="stat">VELOCITY <button id="velMinus" class="ghost nudge" aria-label="velocity down">−</button><input type="range" id="velR" min="1" max="200" value="50"><input type="number" id="velN" min="1" max="200" value="50" inputmode="numeric"><button id="velPlus" class="ghost nudge" aria-label="velocity up">+</button></span>
+  <span class="stat"><span class="lbl">ANGLE</span> <button id="angMinus" class="ghost nudge" aria-label="angle down">−</button><input type="range" id="angR" min="0" max="180" value="45"><input type="number" id="angN" min="0" max="180" value="45" inputmode="numeric"><button id="angPlus" class="ghost nudge" aria-label="angle up">+</button></span>
+  <span class="stat"><span class="lbl">VELOCITY</span> <button id="velMinus" class="ghost nudge" aria-label="velocity down">−</button><input type="range" id="velR" min="1" max="200" value="50"><input type="number" id="velN" min="1" max="200" value="50" inputmode="numeric"><button id="velPlus" class="ghost nudge" aria-label="velocity up">+</button></span>
   <span class="hint"><kbd>&#8592;</kbd><kbd>&#8594;</kbd> angle &nbsp; <kbd>&#8593;</kbd><kbd>&#8595;</kbd> velocity &nbsp; <kbd>ENTER</kbd> fire</span>
   <button id="fireBtn">FIRE &#9166;</button>
   <button id="muteBtn" class="ghost" title="toggle music/sfx">SND ON</button>
@@ -728,6 +732,11 @@ function endTurn(){
   turn ^= 1; phase = 'aim'; shot = null; boom = null;
   updateHUD(); setMsg(poss(names[turn]) + ' TURN');
   syncTurnUI();
+  // restore human aim after computer's turn (fix bug where computer overwrote sliders)
+  if(mode==='bot' && turn===0 && savedHumanAng!==null){
+    setSliders(savedHumanAng, savedHumanVel);
+    savedHumanAng = null; savedHumanVel = null;
+  }
 }
 
 // Faithful: only a direct hit scores. Self-hit hands the point over.
@@ -803,21 +812,33 @@ function finishBoom(){
 }
 
 // ---------- turn UI ----------
+let savedHumanAng = null, savedHumanVel = null;
 function syncTurnUI(){
   if(phase !== 'aim'){ setControlsEnabled(false); return; }
   const human = mode==='hot' || (mode==='bot' && turn===0) || (mode==='net' && turn===myIndex);
   setControlsEnabled(human);
   if(mode==='bot' && turn===1){
+    // remember human's aim so computer doesn't permanently overwrite it
+    if(savedHumanAng===null){ savedHumanAng = +$('angN').value; savedHumanVel = +$('velN').value; }
     setMsg('COMPUTER IS THINKING…');
     setTimeout(()=>{
       if(phase!=='aim' || mode!=='bot') return;
       const s = solveShot(1, 0, top, gorillas, wind, gravity);
+      // briefly show computer's aim (then endTurn will restore human's)
       setSliders(s.ang, s.vel);
       setMsg('COMPUTER FIRES: angle '+Math.round(s.ang)+', velocity '+Math.round(s.vel));
       setTimeout(()=>fire(s.ang, s.vel), 600);
     }, 700);
-  }else if(mode==='net' && turn!==myIndex){
-    setMsg("OPPONENT'S TURN — WAITING…");
+  }else{
+    // human's turn — clear saved and allow pre-aim to update saved
+    if(mode==='bot' && turn===0 && phase==='aim'){
+      // keep saved updated if human adjusts while it's their turn
+      // will be overwritten next time computer starts thinking
+      savedHumanAng = null; savedHumanVel = null;
+    }
+    if(mode==='net' && turn!==myIndex){
+      setMsg("OPPONENT'S TURN — WAITING…");
+    }
   }
 }
 
