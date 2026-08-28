@@ -111,9 +111,104 @@ function solveShot(me,opp,top,gorillas,wind,grav){
 }
 
 // --- readline ---
-const rl=readline.createInterface({input:inputStream, output:outputStream});
+const isTTY = !!(inputStream.isTTY && outputStream.isTTY);
+const rlOpts={input:inputStream, output:outputStream, terminal: isTTY};
+const rl=readline.createInterface(rlOpts);
 const ask=q=>new Promise(res=> rl.question(q,ans=>res(ans)));
 const clear=()=> outputStream.write('\x1b[2J\x1b[H');
+// --- arrow-aware ask for angle/velocity (Mac arrows send ^[[A etc.) ---
+function askNumberWithArrows(prompt, cur, min, max){
+  // For piped input (echo "45" | sh cli) just use simple ask
+  if(!inputStream.isTTY){
+    return ask(prompt).then(s=>{
+      const v=parseFloat(s);
+      if(s.trim()===''||isNaN(v)) return String(cur);
+      return String(Math.max(min,Math.min(max,Math.round(v))));
+    });
+  }
+  return new Promise(resolve=>{
+    let val=cur;
+    let buf=String(cur);
+    let pos=buf.length;
+    const redraw=()=>{
+      // move cursor to start of line and redraw prompt + value
+      outputStream.write('\r\x1b[K'+prompt+buf+' \x1b[7m \x1b[0m');
+      // move cursor to correct pos (prompt length + pos)
+      const col=prompt.length+pos+1;
+      outputStream.write(`\x1b[${col}G`);
+    };
+    const onKey=(str,key)=>{
+      if(key.name==='return' || key.name==='enter'){
+        cleanup(); outputStream.write('\n'); resolve(buf.trim()===''?String(cur):buf);
+      } else if(key.name==='escape' || (key.ctrl && key.name==='c')){
+        cleanup(); outputStream.write('\n'); resolve(String(cur));
+      } else if(key.name==='backspace' || key.name==='delete'){
+        if(pos>0){ buf=buf.slice(0,pos-1)+buf.slice(pos); pos--; redraw(); }
+      } else if(key.name==='left'){
+        // angle/velocity down
+        val=Math.max(min, Math.min(max, (parseFloat(buf)||cur)-1));
+        buf=String(Math.round(val)); pos=buf.length; redraw();
+      } else if(key.name==='right'){
+        val=Math.max(min, Math.min(max, (parseFloat(buf)||cur)+1));
+        buf=String(Math.round(val)); pos=buf.length; redraw();
+      } else if(key.name==='up'){
+        val=Math.max(min, Math.min(max, (parseFloat(buf)||cur)+1));
+        buf=String(Math.round(val)); pos=buf.length; redraw();
+      } else if(key.name==='down'){
+        val=Math.max(min, Math.min(max, (parseFloat(buf)||cur)-1));
+        buf=String(Math.round(val)); pos=buf.length; redraw();
+      } else if(key.sequence && /^[0-9.\-]/.test(key.sequence) && key.sequence.length===1){
+        buf=buf.slice(0,pos)+key.sequence+buf.slice(pos); pos++; redraw();
+      }
+    };
+    const cleanup=()=>{
+      inputStream.removeListener('keypress', onKey);
+      if(inputStream.isTTY && typeof inputStream.setRawMode==='function'){
+        try{ inputStream.setRawMode(false); }catch{}
+      }
+      rl.pause();
+    };
+    // enable raw and keypress
+    try{
+      const { emitKeypressEvents } = readline;
+      emitKeypressEvents(inputStream);
+      if(inputStream.isTTY && typeof inputStream.setRawMode==='function') inputStream.setRawMode(true);
+    }catch{}
+    inputStream.on('keypress', onKey);
+    // also handle data for fallback (when raw not available, arrow sequences as ^[[A) and piped input like "45\n"
+    const onData=d=>{
+      const s=d.toString();
+      // piped input with newline (e.g., printf "45\n" | sh cli) — handle whole line
+      if(s.includes('\r') || s.includes('\n')){
+        const line=s.split(/[\r\n]/)[0];
+        if(line.trim()!=='' && !line.includes('\x1b')){
+          buf=line.trim();
+        }
+        cleanup(); outputStream.write('\n'); resolve(buf.trim()===''?String(cur):buf); inputStream.removeListener('data',onData); return;
+      }
+      if(s==='\x7f' || s==='\b'){ if(pos>0){ buf=buf.slice(0,pos-1)+buf.slice(pos); pos--; redraw(); } }
+      else if(s==='\x1b[A' || s==='\x1bOA'){ // up
+        val=Math.max(min, Math.min(max, (parseFloat(buf)||cur)+1)); buf=String(Math.round(val)); pos=buf.length; redraw();
+      } else if(s==='\x1b[B' || s==='\x1bOB'){ // down
+        val=Math.max(min, Math.min(max, (parseFloat(buf)||cur)-1)); buf=String(Math.round(val)); pos=buf.length; redraw();
+      } else if(s==='\x1b[C' || s==='\x1bOC'){ // right
+        val=Math.max(min, Math.min(max, (parseFloat(buf)||cur)+1)); buf=String(Math.round(val)); pos=buf.length; redraw();
+      } else if(s==='\x1b[D' || s==='\x1bOD'){ // left
+        val=Math.max(min, Math.min(max, (parseFloat(buf)||cur)-1)); buf=String(Math.round(val)); pos=buf.length; redraw();
+      } else if(/^[0-9.\-]$/.test(s)){
+        buf=buf.slice(0,pos)+s+buf.slice(pos); pos++; redraw();
+      } else if(s.length>1 && /^[0-9.\-]+$/.test(s.trim())){
+        // piped multi-char number without newline yet (fallback)
+        buf=s.trim(); pos=buf.length; redraw();
+      }
+    };
+    // if raw mode not available, use data listener
+    if(!inputStream.isTTY || typeof inputStream.setRawMode!=='function'){
+      inputStream.on('data', onData);
+    }
+    redraw();
+  });
+}
 
 // --- draw (pixel blocks, web-like) ---
 const BUILD_COLORS=['\x1b[48;5;30m','\x1b[48;5;124m','\x1b[48;5;244m','\x1b[48;5;127m','\x1b[48;5;28m','\x1b[48;5;130m'];
@@ -235,7 +330,8 @@ async function gameLoop(rng, myMode){
         if(c||shot.y>=GROUND||shot.x<-5||shot.x>WORLD_W+5) break;
       }
       const c=collide(shot.x,shot.y,top,gorillas);
-      shot=null; phase='boom'; boom={x:shot?.x||0,y:shot?.y||0};
+      const shotX=shot.x, shotY=shot.y;
+      shot=null; phase='boom'; boom={x:shotX,y:shotY};
       if(c && c.type==='gorilla'){
         gorillas[c.i].alive=false;
         draw(buildings,top,gorillas,wind,turn,scores,'boom',"HIT!",ang,vel,null,boom); await new Promise(r=>setTimeout(r,500));
@@ -253,10 +349,10 @@ async function gameLoop(rng, myMode){
       await new Promise(r=>setTimeout(r,300));
       continue;
     } else {
-      const aStr=await ask(`Angle (0-180) [${ang.toFixed(0)}]: `);
-      if(aStr.trim()!==''){ const v=parseFloat(aStr); if(!isNaN(v)) ang=Math.max(0,Math.min(180,v)); }
-      const vStr=await ask(`Velocity (1-200) [${vel.toFixed(0)}]: `);
-      if(vStr.trim()!==''){ const v=parseFloat(vStr); if(!isNaN(v)) vel=Math.max(1,Math.min(200,v)); }
+      const aStr=await askNumberWithArrows(`Angle (0-180) [${ang.toFixed(0)}]: `, ang, 0, 180);
+      const av=parseFloat(aStr); if(!isNaN(av)) ang=Math.max(0,Math.min(180,av));
+      const vStr=await askNumberWithArrows(`Velocity (1-200) [${vel.toFixed(0)}]: `, vel, 1, 200);
+      const vv=parseFloat(vStr); if(!isNaN(vv)) vel=Math.max(1,Math.min(200,vv));
       const f=facingOf(turn), lp=launchPos(gorillas[turn],f);
       shot=makeShot(lp[0],lp[1],ang,vel,f,wind,gravity);
       if(myMode==='net' && net.room){
@@ -271,13 +367,14 @@ async function gameLoop(rng, myMode){
         if(c||shot.y>=GROUND||shot.x<-5||shot.x>WORLD_W+5) break;
       }
       const c=collide(shot.x,shot.y,top,gorillas);
+      const shotX=shot.x, shotY=shot.y;
       shot=null;
-      if(!c && shot && shot.y>=GROUND-1){
+      if(!c && shotY>=GROUND-1){
         outputStream.write("Miss!\n"); await new Promise(r=>setTimeout(r,1200)); wind=newWind(rng); turn^=1; phase='aim'; continue;
       }
       if(c && c.type==='out'){ outputStream.write("Off screen!\n"); await new Promise(r=>setTimeout(r,1200)); wind=newWind(rng); turn^=1; phase='aim'; continue; }
       if(c && c.type==='building'){
-        boom={x:shot.x,y:shot.y}; draw(buildings,top,gorillas,wind,turn,scores,'boom',"BOOM!",ang,vel,null,boom); await new Promise(r=>setTimeout(r,400));
+        boom={x:shotX,y:shotY}; draw(buildings,top,gorillas,wind,turn,scores,'boom',"BOOM!",ang,vel,null,boom); await new Promise(r=>setTimeout(r,400));
         explode(boom.x,boom.y,top); applyDrop(gorillas,top); wind=newWind(rng); turn^=1; phase='aim'; boom=null; continue;
       }
       if(c && c.type==='gorilla'){
